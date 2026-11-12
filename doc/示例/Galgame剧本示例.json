@@ -1,0 +1,146 @@
+{
+  "format": "taverndream.galgame/1",
+  "id": "demo-rainy-night",
+  "title": "雨夜来客 · 示例",
+  "start": "n1",
+  "nodes": [
+    {
+      "id": "n1",
+      "title": "第一幕 · 402门口",
+      "location": "暮桥公寓四楼",
+      "time": "夜晚",
+      "narration": "走廊尽头传来塑料袋摩擦的声音。",
+      "image": "scene_corridor",
+      "lines": [
+        {
+          "speaker": "苏糖",
+          "text": "你站门口多久了？",
+          "expression": "警惕",
+          "pose": "半掩门"
+        },
+        {
+          "speaker": "苏糖",
+          "text": "……先进来吧，外面冷。",
+          "expression": "别扭",
+          "pose": "侧身让路",
+          "image": "close_su"
+        }
+      ],
+      "choices": [
+        {
+          "id": "enter",
+          "text": "走进去",
+          "hint": "接受她的邀请",
+          "next": "n2a",
+          "effects": {
+            "affection": {
+              "苏糖": 2
+            },
+            "flags": {
+              "entered_room": true
+            }
+          }
+        },
+        {
+          "id": "ask",
+          "text": "先问她为什么这么晚",
+          "hint": "保持距离",
+          "next": "n2b"
+        }
+      ]
+    },
+    {
+      "id": "n2a",
+      "title": "第二幕 · 屋内",
+      "location": "402室内",
+      "time": "夜晚",
+      "narration": "屋里只开了一盏落地灯，桌上有两杯还冒着热气的茶。",
+      "image": "scene_room",
+      "lines": [
+        {
+          "speaker": "苏糖",
+          "text": "茶是刚泡的。别多想。",
+          "expression": "嘴硬",
+          "pose": "把杯子推过来"
+        }
+      ],
+      "next": "n3"
+    },
+    {
+      "id": "n2b",
+      "title": "第二幕 · 门口",
+      "location": "四楼走廊",
+      "time": "夜晚",
+      "narration": "她没有回答，只是把门又关小了一点。",
+      "image": "scene_door",
+      "lines": [
+        {
+          "speaker": "苏糖",
+          "text": "……你问题真多。",
+          "expression": "不高兴",
+          "pose": "靠着门框"
+        }
+      ],
+      "ending": true
+    },
+    {
+      "id": "n3",
+      "title": "结局 · 热茶",
+      "location": "402室内",
+      "time": "深夜",
+      "narration": "窗外的雨声慢慢变轻，茶杯的温度留在了手心。",
+      "image": "scene_tea",
+      "lines": [
+        {
+          "speaker": "苏糖",
+          "text": "明天……也可以来。",
+          "expression": "小声",
+          "pose": "低头看杯子"
+        }
+      ],
+      "ending": true
+    }
+  ],
+  "images": [
+    {
+      "id": "scene_corridor",
+      "prompt": "旧公寓四楼走廊，暖黄壁灯，雨夜，门口站着一位粉发少女，半掩门，电影感构图，视觉小说场景 CG",
+      "negative": "text, watermark, bad anatomy, low quality",
+      "kind": "scene",
+      "ratio": "3:4",
+      "seed": 101
+    },
+    {
+      "id": "close_su",
+      "prompt": "粉发少女苏糖侧身让路，别扭表情，近景，暖色灯光，公寓门口，视觉小说事件 CG",
+      "negative": "text, watermark, bad anatomy, low quality",
+      "kind": "event_cg",
+      "ratio": "3:4",
+      "seed": 102
+    },
+    {
+      "id": "scene_room",
+      "prompt": "昏暗公寓客厅，落地灯，桌上一壶热茶和两只杯子，粉发少女坐在沙发边，雨夜窗景，视觉小说场景 CG",
+      "negative": "text, watermark, bad anatomy, low quality",
+      "kind": "scene",
+      "ratio": "3:4",
+      "seed": 103
+    },
+    {
+      "id": "scene_door",
+      "prompt": "公寓门口，粉发少女靠着门框，门只开了一条缝，走廊暖灯，夜晚，略带距离感，视觉小说场景 CG",
+      "negative": "text, watermark, bad anatomy, low quality",
+      "kind": "scene",
+      "ratio": "3:4",
+      "seed": 104
+    },
+    {
+      "id": "scene_tea",
+      "prompt": "安静公寓客厅，两只茶杯，热气，窗外雨夜，粉发少女低头看杯子，暖色灯光，温柔结局 CG",
+      "negative": "text, watermark, bad anatomy, low quality",
+      "kind": "scene",
+      "ratio": "3:4",
+      "seed": 105
+    }
+  ]
+}

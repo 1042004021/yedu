@@ -1,0 +1,16 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build
+/app/build
+/captures
+.externalNativeBuild
+.cxx
+# 体积大的端侧运行库不入库，见 README
+/app/src/main/jniLibs/
+/app/src/main/assets/qnnlibs/
+# 打包产物
+/dist/
+/.kotlin/
