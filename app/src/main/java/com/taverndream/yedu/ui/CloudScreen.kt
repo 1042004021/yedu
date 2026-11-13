@@ -2,6 +2,10 @@ package com.taverndream.yedu.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,8 +46,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -120,30 +129,12 @@ fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
             } else {
                 SectionCard {
                     SectionTitle("所有云端作品", "${vm.cloudWorks.size} 个")
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        label = { Text("搜索标题 / 作者 / 标签") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth(),
+                    CloudSearchBar(
+                        query = query,
+                        onQueryChange = { query = it },
+                        loading = vm.cloudLoading,
+                        onSearch = { vm.refreshCloudWorks(query) },
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        SecondaryAction(
-                            text = "搜索",
-                            onClick = { vm.refreshCloudWorks(query) },
-                            enabled = !vm.cloudLoading,
-                            modifier = Modifier.weight(1f),
-                        )
-                        SecondaryAction(
-                            text = if (vm.cloudLoading) "刷新中…" else "刷新",
-                            onClick = { vm.refreshCloudWorks(query) },
-                            enabled = !vm.cloudLoading,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
 
                     if (vm.cloudLoading) {
                         Row(
@@ -201,6 +192,84 @@ fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
             vm = vm,
             onDismiss = { showServerDialog = false },
         )
+    }
+}
+
+@Composable
+private fun CloudSearchBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    loading: Boolean,
+    onSearch: () -> Unit,
+) {
+    val keyboard = LocalSoftwareKeyboardController.current
+    Surface(
+        modifier = Modifier.fillMaxWidth().height(42.dp),
+        color = Color.White.copy(alpha = 0.05f),
+        shape = RoundedCornerShape(11.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize().padding(start = 12.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Filled.Search,
+                contentDescription = null,
+                tint = Muted,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(Modifier.weight(1f)) {
+                if (query.isEmpty()) {
+                    Text(
+                        "搜索标题 / 作者 / 标签",
+                        color = Muted.copy(alpha = 0.75f),
+                        fontSize = 12.sp,
+                    )
+                }
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = TextStyle(color = Paper, fontSize = 13.sp),
+                    cursorBrush = SolidColor(Amber),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            keyboard?.hide()
+                            onSearch()
+                        },
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .clickable(enabled = !loading) {
+                        keyboard?.hide()
+                        onSearch()
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 1.5.dp,
+                        color = Amber,
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.Search,
+                        contentDescription = "搜索",
+                        tint = Amber,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
