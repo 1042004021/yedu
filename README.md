@@ -100,19 +100,25 @@ filesDir/galgame_json/
 
 与 Tavern Dream 的包名和数据完全独立，可同时安装。
 
-## 云备份签名服务（可选）
+## 云作品库服务（可选）
 
-仓库内附一个只负责签发七牛上传 Token / 私有下载 URL 的 Node.js 服务，AK/SK 只放服务端，不进入 APK：
+仓库内附一个 Cloudflare R2 云端作品库后端：
+
+- 用户上传 `script.json`、可选封面和图包到 R2；
+- 服务端保存标题、简介、作者、标签等元数据到 SQLite；
+- 提供公开作品列表、搜索、详情和下载 URL；
+- R2 预签名 URL 不需要绑定自定义域名，也不需要 ICP 备案；
+- AK/SK 只放服务端环境变量，不进入 APK。
 
 ```bash
 cd server
 cp .env.example .env
-# 填七牛 AK/SK、Bucket、域名和 SERVER_SECRET
+# 填 R2 Account ID、Access Key、Secret、Bucket 和 SERVER_SECRET
 npm install
 npm start
 ```
 
-接口、Docker 部署、HTTPS 反代和 Android 上传方式见 [`server/README.md`](server/README.md)。当前仅完成后端签名服务，App 端云备份尚未接入。
+接口、Docker 部署、Cloudflare Tunnel 和 Android 上传流程见 [`server/README.md`](server/README.md)。当前仅完成后端，App 端云端作品库入口尚未接入。
 
 ## 许可证
 
