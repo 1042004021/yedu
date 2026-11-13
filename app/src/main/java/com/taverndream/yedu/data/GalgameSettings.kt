@@ -42,6 +42,34 @@ class GalgameSettings(context: Context) {
         get() = sp.getInt("sdDownloadThreads", 8).coerceIn(1, 16)
         set(v) = sp.edit().putInt("sdDownloadThreads", v.coerceIn(1, 16)).apply()
 
+    var cloudBaseUrl: String
+        get() = sp.getString("cloudBaseUrl", "") ?: ""
+        set(v) = sp.edit().putString("cloudBaseUrl", v).apply()
+
+    var cloudDeviceId: String
+        get() = sp.getString("cloudDeviceId", "") ?: ""
+        set(v) = sp.edit().putString("cloudDeviceId", v).apply()
+
+    var cloudToken: String
+        get() = sp.getString("cloudToken", "") ?: ""
+        set(v) = sp.edit().putString("cloudToken", v).apply()
+
+    var cloudTokenExpiresAt: Long
+        get() = sp.getLong("cloudTokenExpiresAt", 0L)
+        set(v) = sp.edit().putLong("cloudTokenExpiresAt", v).apply()
+
+    var cloudAuthor: String
+        get() = sp.getString("cloudAuthor", "") ?: ""
+        set(v) = sp.edit().putString("cloudAuthor", v).apply()
+
+    fun clearCloudSession() {
+        sp.edit()
+            .remove("cloudDeviceId")
+            .remove("cloudToken")
+            .remove("cloudTokenExpiresAt")
+            .apply()
+    }
+
     companion object {
         const val DEFAULT_NEGATIVE =
             "lowres, bad anatomy, bad hands, worst quality, watermark, text,"

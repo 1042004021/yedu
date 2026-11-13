@@ -49,6 +49,7 @@ fun LibraryScreen(
     onImport: () -> Unit,
     onContinue: () -> Unit,
     onSettings: () -> Unit,
+    onCloud: () -> Unit,
 ) {
     GalgameBackdrop {
         Column(
@@ -71,8 +72,13 @@ fun LibraryScreen(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 1.6.sp,
                 )
-                IconButton(onClick = onSettings) {
-                    Icon(Icons.Filled.Settings, contentDescription = "设置", tint = Muted)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = onCloud) {
+                        Text("云端", color = Amber, fontSize = 12.sp)
+                    }
+                    IconButton(onClick = onSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "设置", tint = Muted)
+                    }
                 }
             }
 

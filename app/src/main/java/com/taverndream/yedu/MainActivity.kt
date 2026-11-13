@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.taverndream.yedu.ui.CloudScreen
 import com.taverndream.yedu.ui.GalgameTheme
 import com.taverndream.yedu.ui.LibraryScreen
 import com.taverndream.yedu.ui.PlayerScreen
@@ -58,7 +59,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Screen { Library, Player, Settings }
+private enum class Screen { Library, Player, Settings, Cloud }
 
 @Composable
 private fun GalgameApp(vm: GalgameViewModel = viewModel()) {
@@ -101,6 +102,7 @@ private fun GalgameApp(vm: GalgameViewModel = viewModel()) {
                     onImport = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
                     onContinue = { screen = Screen.Player },
                     onSettings = { screen = Screen.Settings },
+                    onCloud = { screen = Screen.Cloud },
                 )
                 Screen.Player -> PlayerScreen(
                     vm = vm,
@@ -109,6 +111,10 @@ private fun GalgameApp(vm: GalgameViewModel = viewModel()) {
                     onSettings = { screen = Screen.Settings },
                 )
                 Screen.Settings -> SettingsScreen(
+                    vm = vm,
+                    onBack = { screen = Screen.Library },
+                )
+                Screen.Cloud -> CloudScreen(
                     vm = vm,
                     onBack = { screen = Screen.Library },
                 )

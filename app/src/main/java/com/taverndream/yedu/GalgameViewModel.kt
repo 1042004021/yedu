@@ -7,6 +7,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.taverndream.yedu.data.CloudDeviceSession
+import com.taverndream.yedu.data.CloudUploadDescriptor
+import com.taverndream.yedu.data.CloudWork
+import com.taverndream.yedu.data.CloudWorkMetadata
 import com.taverndream.yedu.data.GalgameHistoryEntry
 import com.taverndream.yedu.data.GalgameImagePlanner
 import com.taverndream.yedu.data.GalgameImageSpec
@@ -19,18 +23,26 @@ import com.taverndream.yedu.data.GalgameSettings
 import com.taverndream.yedu.data.GalgameState
 import com.taverndream.yedu.data.withEffects
 import com.taverndream.yedu.image.GalgameImageGenerator
+import com.taverndream.yedu.net.CloudApiClient
+import com.taverndream.yedu.net.CloudApiException
 import com.taverndream.yedu.sd.SdBackendService
 import com.taverndream.yedu.sd.SdModel
 import com.taverndream.yedu.sd.SdModelManager
 import com.taverndream.yedu.sd.UpscalerManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.nio.charset.StandardCharsets
+import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
+import java.util.zip.ZipOutputStream
 
 /** 剧本库中的一条记录；每个条目对应一个独立目录、存档和图片目录。 */
 data class GalgameLibraryEntry(
@@ -151,6 +163,38 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     var imageRevision by mutableStateOf(0)
         private set
 
+    // 云作品库状态
+    var cloudWorks by mutableStateOf<List<CloudWork>>(emptyList())
+        private set
+    var cloudLoading by mutableStateOf(false)
+        private set
+    var cloudBusy by mutableStateOf(false)
+        private set
+    var cloudTesting by mutableStateOf(false)
+        private set
+    var cloudProgress by mutableStateOf<String?>(null)
+        private set
+    var cloudError by mutableStateOf<String?>(null)
+        private set
+    var cloudServerStatus by mutableStateOf(
+        if (settings.cloudBaseUrl.isBlank()) "未配置服务器" else "已保存：${settings.cloudBaseUrl}"
+    )
+        private set
+    var cloudDownloadingId by mutableStateOf<String?>(null)
+        private set
+
+    private val cloudApi = CloudApiClient()
+
+    private data class PreparedCloudFile(
+        val kind: String,
+        val name: String,
+        val contentType: String,
+        val bytes: ByteArray,
+    ) {
+        val descriptor: CloudUploadDescriptor
+            get() = CloudUploadDescriptor(kind, name, bytes.size.toLong(), contentType)
+    }
+
     private var script: GalgameScript? = null
     private var currentScriptFolder: File? = null
     private var currentScriptFile: File? = null
@@ -159,6 +203,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     private var imagePaths: MutableMap<String, String> = mutableMapOf()
     private var currentCoverImageId: String? = null
     private var imageJob: Job? = null
+    private var imageScheduleJob: Job? = null
     private var imageGeneration = 0
 
     val hasScripts: Boolean
@@ -318,7 +363,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
             lineIndex++
             renderCurrent()
             saveState()
-            if (currentImageId != previousImage && currentImageId != null) startImageWorker()
+            if (currentImageId != previousImage && currentImageId != null) scheduleImageWorker()
             return
         }
         if (node.ending || node.choices.isNotEmpty()) return
@@ -348,6 +393,8 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         imagePaths.remove(id)
         imageRevision++
         renderCurrent()
+        imageScheduleJob?.cancel()
+        imageScheduleJob = null
         startImageWorker()
     }
 
@@ -532,7 +579,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                 currentNode = node
                 lineIndex = save.lineIndex
                 renderCurrent()
-                startImageWorker()
+                scheduleImageWorker()
                 return
             }
         }
@@ -572,7 +619,19 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         lineIndex = 0
         renderCurrent()
         saveState()
-        startImageWorker()
+        scheduleImageWorker()
+    }
+
+    /** 场景切换先让画面稳定，再启动耗 GPU 的生图队列，避免切幕时抢占渲染。 */
+    private fun scheduleImageWorker(delayMs: Long = 500) {
+        imageScheduleJob?.cancel()
+        // 切幕时立即让旧生图任务让出 GPU，延迟后再排队，避免和画面切换抢资源。
+        imageJob?.cancel()
+        imageScheduleJob = viewModelScope.launch {
+            delay(delayMs)
+            imageScheduleJob = null
+            startImageWorker()
+        }
     }
 
     private fun renderCurrent() {
@@ -757,7 +816,325 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         if (imageId == currentCoverImageId) updateCurrentCover(null)
         if (imageId == currentImageId) renderCurrent()
         toast = "正在重绘 ${spec.id}…"
+        imageScheduleJob?.cancel()
+        imageScheduleJob = null
         startImageWorker(priorityImageId = imageId)
+    }
+
+    fun saveCloudBaseUrl(raw: String): Boolean {
+        return runCatching {
+            val normalized = cloudApi.normalizeBaseUrl(raw)
+            if (normalized != settings.cloudBaseUrl) {
+                settings.cloudBaseUrl = normalized
+                settings.clearCloudSession()
+                cloudWorks = emptyList()
+            }
+            cloudServerStatus = "已保存：$normalized"
+            cloudError = null
+            true
+        }.getOrElse {
+            cloudError = "服务器地址无效：${it.message}"
+            false
+        }
+    }
+
+    fun testCloudServer(raw: String) {
+        if (cloudTesting) return
+        if (!saveCloudBaseUrl(raw)) return
+        val base = settings.cloudBaseUrl
+        viewModelScope.launch {
+            cloudTesting = true
+            cloudError = null
+            cloudServerStatus = "正在连接…"
+            try {
+                cloudApi.health(base)
+                cloudServerStatus = "连接成功：$base"
+                toast = "云服务连接成功"
+                loadCloudWorks(base)
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                cloudServerStatus = "连接失败"
+                cloudError = t.message ?: "无法连接服务器"
+            } finally {
+                cloudTesting = false
+            }
+        }
+    }
+
+    fun refreshCloudWorks(query: String = "") {
+        val base = settings.cloudBaseUrl
+        if (base.isBlank()) {
+            cloudError = "请先在设置中填写云服务器地址"
+            return
+        }
+        if (cloudLoading) return
+        viewModelScope.launch {
+            cloudLoading = true
+            cloudError = null
+            try {
+                loadCloudWorks(base, query)
+                cloudServerStatus = "已连接：$base"
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                cloudError = t.message ?: "读取云端作品失败"
+            } finally {
+                cloudLoading = false
+            }
+        }
+    }
+
+    private suspend fun loadCloudWorks(base: String, query: String = "") {
+        val page = cloudApi.listWorks(base, query = query)
+        cloudWorks = page.items
+    }
+
+    private suspend fun ensureCloudSession(base: String): CloudDeviceSession {
+        val now = System.currentTimeMillis() / 1000
+        val saved = CloudDeviceSession(
+            deviceId = settings.cloudDeviceId,
+            token = settings.cloudToken,
+            expiresAt = settings.cloudTokenExpiresAt,
+        )
+        if (saved.deviceId.isNotBlank() && saved.token.isNotBlank() && saved.expiresAt > now + 60) {
+            return saved
+        }
+        if (saved.token.isNotBlank()) {
+            try {
+                val refreshed = cloudApi.refresh(base, saved.token)
+                saveCloudSession(refreshed)
+                return refreshed
+            } catch (e: CloudApiException) {
+                if (e.statusCode != 401) throw e
+            }
+        }
+        val registered = cloudApi.register(base)
+        saveCloudSession(registered)
+        return registered
+    }
+
+    private fun saveCloudSession(session: CloudDeviceSession) {
+        settings.cloudDeviceId = session.deviceId
+        settings.cloudToken = session.token
+        settings.cloudTokenExpiresAt = session.expiresAt
+    }
+
+    private suspend fun <T> cloudAuthCall(block: suspend (CloudDeviceSession) -> T): T {
+        val base = settings.cloudBaseUrl
+        if (base.isBlank()) throw CloudApiException(0, "请先填写云服务器地址")
+        var session = ensureCloudSession(base)
+        try {
+            return block(session)
+        } catch (e: CloudApiException) {
+            if (e.statusCode != 401) throw e
+            settings.clearCloudSession()
+            session = ensureCloudSession(base)
+            return block(session)
+        }
+    }
+
+    fun uploadCurrentScript(includePack: Boolean, author: String) {
+        if (cloudBusy) return
+        val s = script ?: run {
+            toast = "请先选择剧本"
+            return
+        }
+        val scriptFile = currentScriptFile?.takeIf { it.isFile } ?: run {
+            toast = "当前剧本文件不存在"
+            return
+        }
+        val base = settings.cloudBaseUrl
+        if (base.isBlank()) {
+            cloudError = "请先填写云服务器地址"
+            return
+        }
+        val cleanAuthor = author.trim()
+        if (cleanAuthor.isNotBlank()) settings.cloudAuthor = cleanAuthor
+
+        viewModelScope.launch {
+            cloudBusy = true
+            cloudError = null
+            try {
+                val metadata = CloudWorkMetadata(
+                    title = s.title,
+                    description = "",
+                    author = cleanAuthor,
+                    tags = emptyList(),
+                    nodeCount = s.nodes.size,
+                    imageCount = s.images.size,
+                )
+                cloudProgress = "创建云端作品…"
+                val draft = cloudAuthCall { session ->
+                    cloudApi.createWork(base, session.token, metadata)
+                }
+
+                val files = mutableListOf<PreparedCloudFile>()
+                val scriptBytes = withContext(Dispatchers.IO) { scriptFile.readBytes() }
+                files += PreparedCloudFile(
+                    kind = "script",
+                    name = "script.json",
+                    contentType = "application/json",
+                    bytes = scriptBytes,
+                )
+
+                val coverFile = currentCoverImageId
+                    ?.let { imagePaths[it] }
+                    ?.let { File(it) }
+                    ?.takeIf { it.isFile }
+                if (coverFile != null) {
+                    val ext = coverFile.extension.lowercase()
+                    val contentType = when (ext) {
+                        "png" -> "image/png"
+                        "webp" -> "image/webp"
+                        else -> "image/jpeg"
+                    }
+                    files += PreparedCloudFile(
+                        kind = "cover",
+                        name = coverFile.name,
+                        contentType = contentType,
+                        bytes = withContext(Dispatchers.IO) { coverFile.readBytes() },
+                    )
+                }
+
+                if (includePack) {
+                    val pack = withContext(Dispatchers.IO) { buildImagePack() }
+                    if (pack != null) {
+                        if (pack.size > MAX_CLOUD_UPLOAD_BYTES) {
+                            throw IllegalStateException("图片包超过 32MB，请减少图片后再上传")
+                        }
+                        files += PreparedCloudFile(
+                            kind = "pack",
+                            name = "pack.zip",
+                            contentType = "application/zip",
+                            bytes = pack,
+                        )
+                    }
+                }
+
+                cloudProgress = "获取上传地址…"
+                val presign = cloudAuthCall { session ->
+                    cloudApi.presign(base, session.token, draft.id, files.map { it.descriptor })
+                }
+                val remoteByKind = presign.files.associateBy { it.kind }
+                files.forEachIndexed { index, file ->
+                    val remote = remoteByKind[file.kind]
+                        ?: throw IllegalStateException("服务器没有返回 ${file.kind} 的上传地址")
+                    cloudProgress = "上传 ${file.kind}（${index + 1}/${files.size}）…"
+                    cloudApi.uploadFile(remote, file.bytes)
+                }
+
+                cloudProgress = "发布作品…"
+                cloudAuthCall { session ->
+                    cloudApi.finalize(base, session.token, draft.id, metadata)
+                }
+                toast = "已上传《${s.title}》到云端"
+                loadCloudWorks(base)
+                cloudServerStatus = "已连接：$base"
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                cloudError = t.message ?: "上传失败"
+            } finally {
+                cloudBusy = false
+                cloudProgress = null
+            }
+        }
+    }
+
+    fun downloadCloudWork(work: CloudWork) {
+        if (cloudBusy) return
+        val base = settings.cloudBaseUrl
+        if (base.isBlank()) {
+            cloudError = "请先填写云服务器地址"
+            return
+        }
+        viewModelScope.launch {
+            cloudBusy = true
+            cloudDownloadingId = work.id
+            cloudError = null
+            var folder: File? = null
+            try {
+                cloudProgress = "获取下载地址…"
+                val info = cloudApi.downloadInfo(base, work.id)
+                cloudProgress = "下载剧本…"
+                val scriptBytes = cloudApi.downloadBytes(info.script.url)
+                val raw = String(scriptBytes, StandardCharsets.UTF_8)
+                val result = GalgameScriptCodec.validate(raw)
+                val parsed = result.script
+                if (!result.ok || parsed == null) {
+                    throw IllegalStateException("云端剧本校验失败：${result.errors.joinToString("；").take(300)}")
+                }
+
+                val packBytes = info.pack?.let {
+                    cloudProgress = "下载图包…"
+                    cloudApi.downloadBytes(it.url)
+                }
+
+                cloudProgress = "写入本地剧本库…"
+                folder = withContext(Dispatchers.IO) {
+                    val target = newScriptFolder(parsed)
+                    try {
+                        File(target, "script.json").writeBytes(scriptBytes)
+                        if (packBytes != null) unzipImagePack(packBytes, target)
+                        target
+                    } catch (t: Throwable) {
+                        target.deleteRecursively()
+                        throw t
+                    }
+                }
+
+                refreshLibrary()
+                selectScript(folder.name)
+                runCatching { loadCloudWorks(base) }
+                toast = "已下载《${parsed.title}》到本地剧本库"
+                cloudServerStatus = "已连接：$base"
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                cloudError = t.message ?: "下载失败"
+            } finally {
+                cloudBusy = false
+                cloudDownloadingId = null
+                cloudProgress = null
+            }
+        }
+    }
+
+    private fun buildImagePack(): ByteArray? {
+        val dir = scriptImageDir ?: return null
+        val images = dir.listFiles()?.filter { it.isFile }.orEmpty()
+        if (images.isEmpty()) return null
+        val output = ByteArrayOutputStream()
+        ZipOutputStream(output).use { zip ->
+            images.forEach { image ->
+                zip.putNextEntry(ZipEntry("images/${image.name}"))
+                image.inputStream().use { input -> input.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
+        return output.toByteArray()
+    }
+
+    private fun unzipImagePack(bytes: ByteArray, folder: File) {
+        val imageDir = File(folder, "images").apply { mkdirs() }
+        val root = imageDir.canonicalFile
+        ZipInputStream(bytes.inputStream()).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (!entry.isDirectory) {
+                    val name = entry.name.replace('\\', '/').substringAfterLast('/')
+                    if (name.isNotBlank() && !name.contains("..")) {
+                        val target = File(imageDir, name).canonicalFile
+                        if (target.path.startsWith(root.path + File.separator)) {
+                            target.outputStream().use { output -> zip.copyTo(output) }
+                        }
+                    }
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
     }
 
     private fun saveState() {
@@ -811,10 +1188,15 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         showNode(nodeId, "地图跳转", addHistory = true)
     }
 
+    private companion object {
+        const val MAX_CLOUD_UPLOAD_BYTES = 32L * 1024 * 1024
+    }
+
     private fun safeId(id: String): String =
         id.replace(Regex("[^A-Za-z0-9._-]"), "_").ifBlank { "image" }
 
     override fun onCleared() {
+        imageScheduleJob?.cancel()
         imageJob?.cancel()
         super.onCleared()
     }

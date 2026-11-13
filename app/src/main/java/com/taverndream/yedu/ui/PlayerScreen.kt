@@ -137,10 +137,15 @@ fun PlayerScreen(
     val textStyle = TextStyle(
         fontSize = if (line?.narration == true) 18.sp else 19.sp,
         lineHeight = if (line?.narration == true) 29.sp else 31.sp,
+        fontFamily = if (line?.narration == true) FontFamily.Serif else FontFamily.Default,
         fontStyle = if (line?.narration == true) FontStyle.Italic else FontStyle.Normal,
     )
-    // 对话框高度固定；留给正文的高度按是否有角色名标签区分。
-    val textMaxHeight = if (hasSpeaker) 96.dp else 132.dp
+    // 对话框高度固定；旁白留出标签空间，角色台词留出名字空间。
+    val textMaxHeight = when {
+        line?.narration == true -> 108.dp
+        hasSpeaker -> 96.dp
+        else -> 132.dp
+    }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
         val density = LocalDensity.current
@@ -280,7 +285,7 @@ private fun PlayerBackground(
                 path = path,
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
-                blurRadius = 30.dp,
+                blurRadius = 18.dp,
                 dim = 0.30f,
             )
         } else {
@@ -529,9 +534,37 @@ private fun DialoguePanel(
                 Crossfade(targetState = line, animationSpec = tween(150), label = "galgame-line") { current ->
                     if (current == null) {
                         Text("这一幕没有台词，点击画面继续。", color = Muted, fontSize = 14.sp)
+                    } else if (current.narration) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color.White.copy(alpha = 0.035f),
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.07f)),
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(5.dp),
+                            ) {
+                                Text(
+                                    "旁白  ·  NARRATION",
+                                    color = AmberSoft.copy(alpha = 0.78f),
+                                    fontSize = 8.sp,
+                                    letterSpacing = 1.2.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    pageText,
+                                    color = Paper.copy(alpha = 0.80f),
+                                    fontFamily = FontFamily.Serif,
+                                    fontSize = 18.sp,
+                                    lineHeight = 29.sp,
+                                    fontStyle = FontStyle.Italic,
+                                )
+                            }
+                        }
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (!current.narration && current.speaker.isNotBlank()) {
+                            if (current.speaker.isNotBlank()) {
                                 Surface(
                                     color = Amber.copy(alpha = 0.14f),
                                     shape = CircleShape,
@@ -548,10 +581,9 @@ private fun DialoguePanel(
                             }
                             Text(
                                 pageText,
-                                color = if (current.narration) Muted else Paper,
-                                fontSize = if (current.narration) 18.sp else 19.sp,
-                                lineHeight = if (current.narration) 29.sp else 31.sp,
-                                fontStyle = if (current.narration) FontStyle.Italic else FontStyle.Normal,
+                                color = Paper,
+                                fontSize = 19.sp,
+                                lineHeight = 31.sp,
                             )
                         }
                     }

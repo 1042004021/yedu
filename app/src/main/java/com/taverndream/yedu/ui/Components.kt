@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -31,10 +32,12 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import java.io.File
 
 /** 全 App 共用的午夜剧场背景，带一点舞台聚光而不是纯黑。 */
@@ -184,6 +187,54 @@ fun SectionTitle(text: String, trailing: String? = null) {
 }
 
 /**
+ * 云端封面/图片：与本地 BlurredFitImage 相同的等比展示，只是 model 使用 URL。
+ */
+@Composable
+fun BlurredFitImageUrl(
+    url: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    blurRadius: Dp = 20.dp,
+    dim: Float = 0.22f,
+) {
+    val context = LocalContext.current
+    Box(
+        modifier = modifier.clipToBounds().background(Color.Black),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (url.isNullOrBlank()) return@Box
+        val backgroundRequest = remember(url) {
+            ImageRequest.Builder(context)
+                .data(url)
+                .size(256)
+                .crossfade(180)
+                .build()
+        }
+        val foregroundRequest = remember(url) {
+            ImageRequest.Builder(context)
+                .data(url)
+                .crossfade(180)
+                .build()
+        }
+        AsyncImage(
+            model = backgroundRequest,
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(blurRadius) else Modifier),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+        )
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+        AsyncImage(
+            model = foregroundRequest,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+        )
+    }
+}
+
+/**
  * 生成图统一展示：背景用同一张图铺满并模糊，前景按原始比例完整显示，不裁剪。
  */
 @Composable
@@ -195,10 +246,27 @@ fun BlurredFitImage(
     dim: Float = 0.28f,
 ) {
     val file = path?.let { File(it) }?.takeIf { it.isFile }
+    val context = LocalContext.current
     Box(modifier = modifier.clipToBounds().background(Color.Black), contentAlignment = Alignment.Center) {
         if (file == null) return@Box
+        val fileVersion = "${file.absolutePath}:${file.lastModified()}"
+        val backgroundRequest = remember(fileVersion) {
+            ImageRequest.Builder(context)
+                .data(file)
+                .size(256)
+                .memoryCacheKey("$fileVersion:bg")
+                .crossfade(180)
+                .build()
+        }
+        val foregroundRequest = remember(fileVersion) {
+            ImageRequest.Builder(context)
+                .data(file)
+                .memoryCacheKey("$fileVersion:fg")
+                .crossfade(180)
+                .build()
+        }
         AsyncImage(
-            model = file,
+            model = backgroundRequest,
             contentDescription = null,
             modifier = Modifier
                 .fillMaxSize()
@@ -207,7 +275,7 @@ fun BlurredFitImage(
         )
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
         AsyncImage(
-            model = file,
+            model = foregroundRequest,
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize(),
             contentScale = androidx.compose.ui.layout.ContentScale.Fit,
