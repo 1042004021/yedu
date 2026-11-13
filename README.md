@@ -146,6 +146,34 @@ npm start
 
 接口、Docker 部署、Cloudflare Tunnel 和 Android 上传流程见 [`server/README.md`](server/README.md)。App 端已接入云端作品库，支持长按本地上传、浏览、搜索和下载导入。
 
+## 开源来源与致谢
+
+夜读的端侧 Stable Diffusion 生图能力不是从零实现的，参考并改编了 **local-dream** 的开源实现。按开源署名与许可证保留的行业惯例，这里明确列出来源、版本、改动范围和许可边界。
+
+### local-dream
+
+| 项目 | 信息 |
+|------|------|
+| 上游作者／项目 | xororz / local-dream |
+| 上游仓库 | https://github.com/xororz/local-dream |
+| 本项目使用版本 | v2.4.3 |
+| 上游许可证 | CC BY-NC 4.0 |
+| 许可证全文 | [`LICENSES/CC-BY-NC-4.0-local-dream.txt`](LICENSES/CC-BY-NC-4.0-local-dream.txt) |
+| 主要改编文件 | `app/src/main/java/com/taverndream/sd/SdBackendService.kt`，源于上游 BackendService，适配本项目服务、启动和状态管理 |
+| 关联集成 | `sd/` 中的 HTTP 客户端、模型目录与下载、运行库加载及超分调用，与上游内核协议衔接 |
+
+本项目对上游的主要改动包括：接入 Compose 角色聊天和夜读剧本流程、后台生成后插图、SDXL 模型参数、低内存启动与端侧模型目录适配。
+
+说明：
+
+- 本项目**不是 local-dream 的官方客户端**，也不表示得到原作者认可或背书。
+- local-dream 衍生部分继续按 **CC BY-NC 4.0** 许可，不随本项目原创代码重新许可为 Apache-2.0。
+- 含 local-dream 衍生部分的构建整体受**非商业使用**限制，不能整体宣称可商用。
+- 生图可执行文件 `libstable_diffusion_core.so` 未纳入 Git；排除二进制不消除改编源码本身的署名和许可义务。
+- 如果你分发源码或 APK，请保留本 README、`NOTICE`、`LICENSES/` 和 `THIRD_PARTY_NOTICES.md` 中的署名、许可证与修改说明。
+
+其他历史来源、第三方依赖、QNN 运行库、模型权重和内容版权边界见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)；该文件不是法律意见，公开分发前仍应做一次依赖与许可证核对。
+
 ## 许可证
 
 原创代码按 Apache-2.0 许可；local-dream 衍生部分继续按 CC BY-NC 4.0，第三方组件保留各自许可。含 local-dream 部分的构建整体受非商业限制，不能整体宣称可商用。见 `LICENSE`、`NOTICE`、`LICENSES/` 和 `THIRD_PARTY_NOTICES.md`。
