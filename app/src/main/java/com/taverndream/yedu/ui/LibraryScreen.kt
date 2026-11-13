@@ -1,6 +1,9 @@
 package com.taverndream.yedu.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,10 +31,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.taverndream.yedu.GalgameLibraryEntry
@@ -194,21 +200,31 @@ private fun ScriptLibraryList(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle("剧本库", "${vm.library.size} 个 GAL")
-        vm.library.forEach { entry ->
-            ScriptLibraryCard(
-                vm = vm,
-                entry = entry,
-                isCurrent = vm.currentScriptKey == entry.key,
-                onOpen = {
-                    vm.selectScript(entry.key)
-                    onContinue()
-                },
-                onRestart = {
-                    vm.selectScript(entry.key)
-                    vm.startNewGame()
-                    onContinue()
-                },
-            )
+        vm.library.chunked(2).forEach { rowEntries ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                rowEntries.forEach { entry ->
+                    ScriptCoverCard(
+                        vm = vm,
+                        entry = entry,
+                        isCurrent = vm.currentScriptKey == entry.key,
+                        onOpen = {
+                            vm.selectScript(entry.key)
+                            onContinue()
+                        },
+                        onRestart = {
+                            vm.selectScript(entry.key)
+                            vm.startNewGame()
+                            onContinue()
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (rowEntries.size == 1) Spacer(Modifier.weight(1f))
+            }
         }
         Spacer(Modifier.height(2.dp))
         PrimaryAction("导入新剧本", onImport)
@@ -223,64 +239,167 @@ private fun ScriptLibraryList(
 }
 
 @Composable
-private fun ScriptLibraryCard(
+private fun ScriptCoverCard(
     vm: GalgameViewModel,
     entry: GalgameLibraryEntry,
     isCurrent: Boolean,
     onOpen: () -> Unit,
     onRestart: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    SectionCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Top,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+    Surface(
+        modifier = modifier,
+        color = Panel,
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(
+            1.dp,
+            if (isCurrent) Amber.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.09f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    entry.title,
-                    color = Paper,
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    MetaChip("${entry.nodeCount} 幕")
-                    MetaChip("${entry.imageCount} 张图", color = Rose)
-                    if (isCurrent && vm.imageBusy) MetaChip("绘制中", color = Amber)
-                    if (isCurrent) MetaChip("当前", color = AmberSoft)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(0.75f)
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(Color(0xFF11151E)),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (entry.coverPath != null) {
+                    BlurredFitImage(
+                        path = entry.coverPath,
+                        contentDescription = entry.title,
+                        modifier = Modifier.fillMaxSize(),
+                        blurRadius = 20.dp,
+                        dim = 0.20f,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color(0xFF2A2638), Color(0xFF11151E))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (isCurrent && vm.imageBusy) "封面生成中…" else "暂无封面",
+                            color = Muted,
+                            fontSize = 11.sp,
+                        )
+                    }
+                }
+                if (isCurrent) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(7.dp),
+                        color = Amber.copy(alpha = 0.92f),
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        Text(
+                            "当前",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            color = Ink,
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
                 }
             }
-            Text("JSON", color = Muted.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-        }
 
-        if (isCurrent && vm.imageBusy) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(12.dp),
-                    strokeWidth = 1.5.dp,
-                    color = AmberSoft,
+            Text(
+                entry.title,
+                color = Paper,
+                fontFamily = FontFamily.Serif,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.height(44.dp),
+            )
+            Text(
+                "${entry.nodeCount} 幕 · ${entry.imageCount} 图",
+                color = Muted,
+                fontSize = 9.sp,
+            )
+            if (isCurrent && vm.imageBusy) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(9.dp),
+                        strokeWidth = 1.2.dp,
+                        color = AmberSoft,
+                    )
+                    Text(
+                        vm.imageProgress ?: "正在生成…",
+                        color = Muted,
+                        fontSize = 8.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            } else {
+                Text(
+                    entry.currentNodeTitle.takeIf { it.isNotBlank() }?.let { "停在：$it" }
+                        ?: "从第一幕开始",
+                    color = Muted,
+                    fontSize = 9.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Text(vm.imageProgress ?: "正在准备图片…", color = Muted, fontSize = 11.sp)
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                MiniAction(
+                    text = if (entry.hasSave) "继续" else "开始",
+                    primary = true,
+                    onClick = onOpen,
+                    modifier = Modifier.weight(1f),
+                )
+                MiniAction(
+                    text = "从头",
+                    primary = false,
+                    onClick = onRestart,
+                    modifier = Modifier.weight(0.72f),
+                )
             }
         }
+    }
+}
 
+@Composable
+private fun MiniAction(
+    text: String,
+    primary: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClick = onClick),
+        color = if (primary) Amber else Color.White.copy(alpha = 0.07f),
+        shape = MaterialTheme.shapes.small,
+        border = if (primary) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+    ) {
         Text(
-            entry.currentNodeTitle.takeIf { it.isNotBlank() }?.let { "上次停在：$it" }
-                ?: "从第一幕开始",
-            color = Muted,
+            text,
+            modifier = Modifier.padding(vertical = 9.dp),
+            color = if (primary) Ink else Paper,
             fontSize = 12.sp,
-        )
-
-        Spacer(Modifier.height(2.dp))
-        PrimaryAction(if (entry.hasSave) "继续故事" else "开始故事", onOpen)
-        SecondaryAction(
-            text = "从头开始",
-            onClick = onRestart,
-            modifier = Modifier.fillMaxWidth(),
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
         )
     }
 }

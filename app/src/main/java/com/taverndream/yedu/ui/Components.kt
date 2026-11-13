@@ -1,5 +1,6 @@
 package com.taverndream.yedu.ui
 
+import android.os.Build
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,7 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -28,8 +31,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import java.io.File
 
 /** 全 App 共用的午夜剧场背景，带一点舞台聚光而不是纯黑。 */
 @Composable
@@ -174,6 +180,38 @@ fun SectionTitle(text: String, trailing: String? = null) {
         trailing?.let {
             Text(it, color = Muted, fontSize = 11.sp)
         }
+    }
+}
+
+/**
+ * 生成图统一展示：背景用同一张图铺满并模糊，前景按原始比例完整显示，不裁剪。
+ */
+@Composable
+fun BlurredFitImage(
+    path: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    blurRadius: Dp = 28.dp,
+    dim: Float = 0.28f,
+) {
+    val file = path?.let { File(it) }?.takeIf { it.isFile }
+    Box(modifier = modifier.clipToBounds().background(Color.Black), contentAlignment = Alignment.Center) {
+        if (file == null) return@Box
+        AsyncImage(
+            model = file,
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Modifier.blur(blurRadius) else Modifier),
+            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+        )
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = dim)))
+        AsyncImage(
+            model = file,
+            contentDescription = contentDescription,
+            modifier = Modifier.fillMaxSize(),
+            contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+        )
     }
 }
 

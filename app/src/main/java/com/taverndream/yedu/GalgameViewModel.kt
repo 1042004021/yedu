@@ -38,6 +38,7 @@ data class GalgameLibraryEntry(
     val title: String,
     val nodeCount: Int,
     val imageCount: Int,
+    val coverPath: String?,
     val hasSave: Boolean,
     val currentNodeTitle: String,
     val lastPlayedAt: Long,
@@ -156,6 +157,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     private var currentSaveFile: File? = null
     private var scriptImageDir: File? = null
     private var imagePaths: MutableMap<String, String> = mutableMapOf()
+    private var currentCoverImageId: String? = null
     private var imageJob: Job? = null
     private var imageGeneration = 0
 
@@ -286,6 +288,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                 runCatching { lastScriptFile.writeText(folder.name) }
                 refreshLibrary()
                 applyScript(result.script, folder, restore = false)
+                toast = "已导入《${result.script.title}》，正在优先生成封面"
                 importSerial++
             } catch (t: CancellationException) {
                 throw t
@@ -449,11 +452,13 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                     saveFile.takeIf { it.isFile }?.lastModified() ?: 0L,
                     File(folder, "script.json").lastModified(),
                 )
+                val coverId = coverImageIdOf(parsed)
                 GalgameLibraryEntry(
                     key = folder.name,
                     title = parsed.title,
                     nodeCount = parsed.nodes.size,
                     imageCount = parsed.images.size,
+                    coverPath = coverId?.let { imageFile(folder, it) },
                     hasSave = save != null,
                     currentNodeTitle = currentNodeTitle,
                     lastPlayedAt = lastPlayed,
@@ -496,6 +501,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         currentImageId = null
         imagePaths = mutableMapOf()
         imageRevision++
+        currentCoverImageId = null
         currentScriptKey = null
         currentScriptFolder = null
         currentScriptFile = null
@@ -515,6 +521,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         scriptImageDir = File(folder, "images").apply { mkdirs() }
         imagePaths = existingImages(value).toMutableMap()
         imageRevision++
+        currentCoverImageId = coverImageIdOf(value)
         val save = if (restore) readSave(value.id) else null
         hasSave = save != null
         if (save != null) {
@@ -615,6 +622,26 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         return inherited
     }
 
+    private fun coverImageIdOf(value: GalgameScript): String? {
+        val start = value.nodes.firstOrNull { it.id == value.start }
+        return start?.image?.takeIf { it.isNotBlank() }
+            ?: start?.lines?.firstOrNull { it.image.isNotBlank() }?.image
+            ?: value.images.firstOrNull()?.id?.takeIf { it.isNotBlank() }
+    }
+
+    private fun imageFile(folder: File, imageId: String): String? =
+        listOf("jpg", "png")
+            .map { File(File(folder, "images"), "${safeId(imageId)}.$it") }
+            .firstOrNull { it.isFile }
+            ?.absolutePath
+
+    private fun updateCurrentCover(path: String) {
+        val key = currentScriptKey ?: return
+        library = library.map {
+            if (it.key == key) it.copy(coverPath = path) else it
+        }
+    }
+
     private fun existingImages(value: GalgameScript): Map<String, String> {
         val dir = scriptImageDir ?: return emptyMap()
         return value.images.mapNotNull { spec ->
@@ -678,6 +705,9 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                         if (token == imageGeneration) {
                             imagePaths[spec.id] = target.absolutePath
                             imageRevision++
+                            if (spec.id == currentCoverImageId) {
+                                updateCurrentCover(target.absolutePath)
+                            }
                             if (spec.id == currentImageId) renderCurrent()
                         }
                     } catch (t: CancellationException) {

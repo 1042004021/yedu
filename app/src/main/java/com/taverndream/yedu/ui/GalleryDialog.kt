@@ -34,7 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,9 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import coil.compose.AsyncImage
 import com.taverndream.yedu.GalgameGalleryItem
-import java.io.File
 
 @Composable
 fun GalleryDialog(
@@ -124,11 +121,12 @@ fun GalleryDialog(
                     .clickable { preview = null },
                 contentAlignment = Alignment.Center,
             ) {
-                AsyncImage(
-                    model = File(item.path.orEmpty()),
+                BlurredFitImage(
+                    path = item.path,
                     contentDescription = item.id,
-                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize().padding(12.dp),
+                    blurRadius = 34.dp,
+                    dim = 0.42f,
                 )
                 IconButton(
                     onClick = { preview = null },
@@ -167,11 +165,12 @@ private fun GalleryCard(
                 contentAlignment = Alignment.Center,
             ) {
                 if (generated) {
-                    AsyncImage(
-                        model = File(item.path.orEmpty()),
+                    BlurredFitImage(
+                        path = item.path,
                         contentDescription = item.id,
-                        contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
+                        blurRadius = 18.dp,
+                        dim = 0.18f,
                     )
                 } else {
                     Column(
