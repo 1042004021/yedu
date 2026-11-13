@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.taverndream.yedu.GalgameViewModel
 import com.taverndream.yedu.data.CloudWork
+import com.taverndream.yedu.data.GalgameSettings
 import java.util.Locale
 
 @Composable
@@ -303,6 +304,12 @@ private fun CloudServerDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                TextButton(
+                    onClick = { serverUrl = GalgameSettings.DEFAULT_CLOUD_BASE_URL },
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                ) {
+                    Text("恢复默认地址", fontSize = 12.sp)
+                }
                 Text(vm.cloudServerStatus, color = Muted, fontSize = 11.sp)
                 vm.cloudError?.let {
                     Text(it, color = Color(0xFFFFB4B4), fontSize = 11.sp)

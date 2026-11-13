@@ -43,7 +43,9 @@ class GalgameSettings(context: Context) {
         set(v) = sp.edit().putInt("sdDownloadThreads", v.coerceIn(1, 16)).apply()
 
     var cloudBaseUrl: String
-        get() = sp.getString("cloudBaseUrl", "") ?: ""
+        get() = sp.getString("cloudBaseUrl", DEFAULT_CLOUD_BASE_URL)
+            ?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_CLOUD_BASE_URL
         set(v) = sp.edit().putString("cloudBaseUrl", v).apply()
 
     var cloudDeviceId: String
@@ -71,6 +73,7 @@ class GalgameSettings(context: Context) {
     }
 
     companion object {
+        const val DEFAULT_CLOUD_BASE_URL = "https://yedu.104021.xyz"
         const val DEFAULT_NEGATIVE =
             "lowres, bad anatomy, bad hands, worst quality, watermark, text,"
         const val DEFAULT_STYLE = "anime style, clean lineart, soft lighting"
