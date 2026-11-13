@@ -100,4 +100,4 @@ filesDir/galgame_json/
 
 ## 许可证
 
-非商业源码项目。原创部分按 CC BY-NC 4.0；第三方组件保留各自许可。见 `LICENSE`、`LICENSES/` 和 `THIRD_PARTY_NOTICES.md`。
+原创代码按 Apache-2.0 许可；local-dream 衍生部分继续按 CC BY-NC 4.0，第三方组件保留各自许可。含 local-dream 部分的构建整体受非商业限制，不能整体宣称可商用。见 `LICENSE`、`NOTICE`、`LICENSES/` 和 `THIRD_PARTY_NOTICES.md`。

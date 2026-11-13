@@ -1,6 +1,7 @@
 # 第三方来源与许可声明
 
 本清单记录已识别的主要来源，不是全部传递依赖的法律合规认证。
+本项目原创代码按 Apache-2.0 许可；但下列 local-dream 衍生部分仍按 CC BY-NC 4.0，不能随原创代码一起重新许可为 Apache-2.0。
 本项目并非以下项目的官方客户端，也不表示得到原作者认可或背书。
 
 ## 1. local-dream
@@ -9,7 +10,7 @@
 - 来源：https://github.com/xororz/local-dream
 - 本项目使用版本：v2.4.3
 - 对应许可证：https://github.com/xororz/local-dream/blob/v2.4.3/LICENSE
-- 许可：CC BY-NC 4.0；完整文本见 `LICENSES/CC-BY-NC-4.0-local-dream.txt`。
+- 许可：CC BY-NC 4.0；完整文本见 `LICENSES/CC-BY-NC-4.0-local-dream.txt`。该衍生部分不随项目原创代码改为 Apache-2.0。
 - 已确认的改编：`app/src/main/java/com/taverndream/sd/SdBackendService.kt`，源于上游 BackendService，适配本项目服务、启动和状态管理。
 - 关联集成：`sd/` 中的 HTTP 客户端、模型目录与下载、运行库加载及超分调用与上游内核协议衔接；这些文件的逐段来源仍应在后续审查中核实，不宣称全部独立原创。
 - 本项目改动：接入 Compose 角色聊天、后台生成后插图、SDXL 模型参数与低内存启动等。改编不代表原作者认可。
@@ -57,6 +58,6 @@
 本仓库公开源码不表示已经审查通过所有 APK 分发义务。
 当前不在 Git 中保存 native 运行库、APK、模型、个人角色卡或日志。
 QNN 本身并非一律禁止随 APK 分发。当前仍有一个 V81 Skel 库与官方包大小及 CRC32 不匹配，且其他 native 组件及传递依赖的分发核对未全部完成，因此尚未发布 APK Release 附件。
-构建时将本声明、项目许可及 `LICENSES/` 复制到 APK 的 `assets/licenses/`；这不将 QNN 重新许可为 CC BY-NC 或 Apache-2.0。
+构建时将本声明、项目许可、NOTICE 及 `LICENSES/` 复制到 APK 的 `assets/licenses/`；这不将 QNN 重新许可为 CC BY-NC 或 Apache-2.0。
 
 核对日期：2026-11-02。本文是项目来源记录，不构成法律意见。

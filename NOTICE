@@ -1,0 +1,12 @@
+Yedu (夜读)
+Copyright 2026 Yedu contributors
+
+Original code in this repository is licensed under the Apache License, Version 2.0.
+See LICENSE for the full license text.
+
+Portions derived from local-dream remain licensed under CC BY-NC 4.0 and are
+not relicensed as Apache-2.0. See THIRD_PARTY_NOTICES.md and
+LICENSES/CC-BY-NC-4.0-local-dream.txt for details.
+
+Third-party components, runtime libraries, model weights, character cards and
+generated images retain their own licenses and are not covered by this notice.

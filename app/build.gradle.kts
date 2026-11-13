@@ -77,6 +77,7 @@ dependencies {
 val prepareLicenseAssets by tasks.registering(Sync::class) {
     from(rootProject.file("LICENSES")) { into("LICENSES") }
     from(rootProject.file("LICENSE"))
+    from(rootProject.file("NOTICE"))
     from(rootProject.file("THIRD_PARTY_NOTICES.md"))
     into(layout.buildDirectory.dir("generated/licenseAssets/licenses"))
 }
