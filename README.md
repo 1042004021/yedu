@@ -162,7 +162,7 @@ npm start
 | 主要改编文件 | `app/src/main/java/com/taverndream/sd/SdBackendService.kt`，源于上游 BackendService，适配本项目服务、启动和状态管理 |
 | 关联集成 | `sd/` 中的 HTTP 客户端、模型目录与下载、运行库加载及超分调用，与上游内核协议衔接 |
 
-本项目对上游的主要改动包括：接入 Compose 角色聊天和夜读剧本流程、后台生成后插图、SDXL 模型参数、低内存启动与端侧模型目录适配。
+本项目对上游的主要改动包括：接入夜读的 Compose 剧本播放流程、后台生成后插图、SDXL 模型参数、低内存启动与端侧模型目录适配。
 
 说明：
 
