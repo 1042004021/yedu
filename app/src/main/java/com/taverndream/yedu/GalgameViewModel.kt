@@ -37,6 +37,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
@@ -163,8 +166,9 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     var imageRevision by mutableStateOf(0)
         private set
 
-    // 云作品库状态
-    var cloudWorks by mutableStateOf<List<CloudWork>>(emptyList())
+    // 云作品库状态；列表和封面都尽量复用本地缓存。
+    private val cloudCacheJson = Json { ignoreUnknownKeys = true }
+    var cloudWorks by mutableStateOf(readCloudWorksCache())
         private set
     var cloudLoading by mutableStateOf(false)
         private set
@@ -921,6 +925,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
             if (normalized != settings.cloudBaseUrl) {
                 settings.cloudBaseUrl = normalized
                 settings.clearCloudSession()
+                settings.cloudWorksCache = ""
                 cloudWorks = emptyList()
             }
             cloudServerStatus = "已保存：$normalized"
@@ -979,9 +984,25 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun readCloudWorksCache(): List<CloudWork> {
+        val raw = settings.cloudWorksCache
+        if (raw.isBlank()) return emptyList()
+        return runCatching {
+            cloudCacheJson.decodeFromString<List<CloudWork>>(raw)
+        }.getOrDefault(emptyList())
+    }
+
+    private fun writeCloudWorksCache(items: List<CloudWork>) {
+        runCatching {
+            settings.cloudWorksCache = cloudCacheJson.encodeToString(items)
+        }
+    }
+
     private suspend fun loadCloudWorks(base: String, query: String = "") {
         val page = cloudApi.listWorks(base, query = query)
         cloudWorks = page.items
+        // 搜索结果是临时视图，不用它覆盖完整列表缓存。
+        if (query.isBlank()) writeCloudWorksCache(page.items)
     }
 
     private suspend fun ensureCloudSession(base: String): CloudDeviceSession {

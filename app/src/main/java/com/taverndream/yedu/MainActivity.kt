@@ -14,6 +14,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -92,7 +94,9 @@ private fun GalgameApp(vm: GalgameViewModel = viewModel()) {
             targetState = screen,
             modifier = Modifier.fillMaxSize(),
             transitionSpec = {
-                fadeIn(tween(180)) togetherWith fadeOut(tween(140))
+                val direction = if (targetState == Screen.Library) -1 else 1
+                (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { direction * it / 12 }) togetherWith
+                    (fadeOut(tween(160)) + slideOutHorizontally(tween(180)) { -direction * it / 18 })
             },
             label = "galgame-screen",
         ) { target ->

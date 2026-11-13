@@ -9,6 +9,7 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,10 +21,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,6 +46,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,6 +101,7 @@ fun Modifier.pressableClickable(
     onClick: () -> Unit,
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
+    val haptic = LocalHapticFeedback.current
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (pressed && enabled) 0.97f else 1f,
@@ -113,8 +117,44 @@ fun Modifier.pressableClickable(
             enabled = enabled,
             interactionSource = interaction,
             indication = LocalIndication.current,
-            onClick = onClick,
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            },
         )
+}
+
+@Composable
+fun PressableIconButton(
+    icon: ImageVector,
+    contentDescription: String?,
+    onClick: () -> Unit,
+    tint: Color = Muted,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val haptic = LocalHapticFeedback.current
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && enabled) 0.88f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "iconPressScale",
+    )
+    IconButton(
+        onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+            onClick()
+        },
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
+        enabled = enabled,
+        interactionSource = interaction,
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = tint)
+    }
 }
 
 @Composable
@@ -271,6 +311,7 @@ fun BlurredFitImageUrl(
     modifier: Modifier = Modifier,
     blurRadius: Dp = 20.dp,
     dim: Float = 0.22f,
+    cacheKey: String? = null,
 ) {
     val context = LocalContext.current
     Box(
@@ -278,16 +319,20 @@ fun BlurredFitImageUrl(
         contentAlignment = Alignment.Center,
     ) {
         if (url.isNullOrBlank()) return@Box
-        val backgroundRequest = remember(url) {
+        val backgroundRequest = remember(url, cacheKey) {
             ImageRequest.Builder(context)
                 .data(url)
+                .memoryCacheKey(cacheKey?.let { "$it:thumb" })
+                .diskCacheKey(cacheKey)
                 .size(256)
                 .crossfade(180)
                 .build()
         }
-        val foregroundRequest = remember(url) {
+        val foregroundRequest = remember(url, cacheKey) {
             ImageRequest.Builder(context)
                 .data(url)
+                .memoryCacheKey(cacheKey?.let { "$it:full" })
+                .diskCacheKey(cacheKey)
                 .crossfade(180)
                 .build()
         }

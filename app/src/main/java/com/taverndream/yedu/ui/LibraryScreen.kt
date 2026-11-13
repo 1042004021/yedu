@@ -30,8 +30,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -88,12 +86,27 @@ fun LibraryScreen(
                     letterSpacing = 1.6.sp,
                 )
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = onCloud) {
-                        Text("云端", color = Amber, fontSize = 12.sp)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Amber.copy(alpha = 0.08f))
+                            .pressableClickable(onClick = onCloud)
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    ) {
+                        Text(
+                            "云端",
+                            color = Amber,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
                     }
-                    IconButton(onClick = onSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "设置", tint = Muted)
-                    }
+                    Spacer(Modifier.width(4.dp))
+                    PressableIconButton(
+                        icon = Icons.Filled.Settings,
+                        contentDescription = "设置",
+                        onClick = onSettings,
+                        tint = Muted,
+                    )
                 }
             }
 

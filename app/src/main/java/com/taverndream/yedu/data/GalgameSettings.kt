@@ -48,6 +48,11 @@ class GalgameSettings(context: Context) {
             ?: DEFAULT_CLOUD_BASE_URL
         set(v) = sp.edit().putString("cloudBaseUrl", v).apply()
 
+    /** 云端作品列表缓存，避免每次进入云端页都重新请求封面。 */
+    var cloudWorksCache: String
+        get() = sp.getString("cloudWorksCache", "") ?: ""
+        set(v) = sp.edit().putString("cloudWorksCache", v).apply()
+
     var cloudDeviceId: String
         get() = sp.getString("cloudDeviceId", "") ?: ""
         set(v) = sp.edit().putString("cloudDeviceId", v).apply()

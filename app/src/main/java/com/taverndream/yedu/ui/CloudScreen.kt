@@ -35,7 +35,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -73,7 +72,7 @@ fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
     var showServerDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        if (vm.settings.cloudBaseUrl.isNotBlank()) {
+        if (vm.settings.cloudBaseUrl.isNotBlank() && vm.cloudWorks.isEmpty()) {
             vm.refreshCloudWorks()
         }
     }
@@ -91,9 +90,12 @@ fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "返回", tint = Paper)
-                }
+                PressableIconButton(
+                    icon = Icons.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    onClick = onBack,
+                    tint = Paper,
+                )
                 Text(
                     "云端作品库",
                     modifier = Modifier.weight(1f),
@@ -102,13 +104,12 @@ fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
                     fontSize = 25.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
-                IconButton(onClick = { showServerDialog = true }) {
-                    Icon(
-                        Icons.Filled.Settings,
-                        contentDescription = "服务器设置",
-                        tint = Muted,
-                    )
-                }
+                PressableIconButton(
+                    icon = Icons.Filled.Settings,
+                    contentDescription = "服务器设置",
+                    onClick = { showServerDialog = true },
+                    tint = Muted,
+                )
             }
 
             Spacer(Modifier.height(6.dp))
@@ -459,6 +460,7 @@ private fun CloudWorkCard(
                         modifier = Modifier.fillMaxSize(),
                         blurRadius = 16.dp,
                         dim = 0.20f,
+                        cacheKey = "cloud-cover-${work.id}-${work.updatedAt}",
                     )
                 } else {
                     Text("暂无封面", color = Muted, fontSize = 10.sp)
