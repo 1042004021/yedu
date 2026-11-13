@@ -296,7 +296,10 @@ private fun CloudServerDialog(
                     value = serverUrl,
                     onValueChange = { serverUrl = it },
                     label = { Text("服务器地址") },
-                    placeholder = { Text("http://192.168.1.10:8787") },
+                    placeholder = { Text("https://yedu.example.com") },
+                    supportingText = {
+                        Text("不填协议时：局域网 IP 用 http，域名用 https")
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
