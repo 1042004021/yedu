@@ -20,10 +20,14 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,9 +50,11 @@ import com.taverndream.yedu.GalgameGalleryItem
 @Composable
 fun GalleryDialog(
     items: List<GalgameGalleryItem>,
+    onRegenerate: (String, String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var preview by remember { mutableStateOf<GalgameGalleryItem?>(null) }
+    var editing by remember { mutableStateOf<GalgameGalleryItem?>(null) }
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -101,6 +107,7 @@ fun GalleryDialog(
                             GalleryCard(
                                 item = item,
                                 onClick = { if (item.path != null) preview = item },
+                                onEdit = { editing = item },
                             )
                         }
                     }
@@ -134,8 +141,31 @@ fun GalleryDialog(
                 ) {
                     Icon(Icons.Filled.Close, contentDescription = "关闭预览", tint = Color.White)
                 }
+                TextButton(
+                    onClick = {
+                        preview = null
+                        editing = item
+                    },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 20.dp),
+                ) {
+                    Text("编辑提示词并重绘", color = Amber, fontSize = 14.sp)
+                }
             }
         }
+    }
+
+    editing?.let { item ->
+        PromptEditDialog(
+            item = item,
+            onDismiss = { editing = null },
+            onSave = { prompt ->
+                editing = null
+                onRegenerate(item.id, prompt)
+            },
+        )
     }
 }
 
@@ -143,6 +173,7 @@ fun GalleryDialog(
 private fun GalleryCard(
     item: GalgameGalleryItem,
     onClick: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     val generated = item.path != null
     Surface(
@@ -203,28 +234,83 @@ private fun GalleryCard(
                     )
                 }
             }
-            Column(
-                modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+            Row(
+                modifier = Modifier.padding(start = 9.dp, end = 3.dp, top = 5.dp, bottom = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    item.id,
-                    color = if (generated) Paper else Muted,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (!generated && item.prompt.isNotBlank()) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
                     Text(
-                        item.prompt,
-                        color = Muted.copy(alpha = 0.55f),
-                        fontSize = 8.sp,
+                        item.id,
+                        color = if (generated) Paper else Muted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
+                    )
+                    if (item.prompt.isNotBlank()) {
+                        Text(
+                            item.prompt,
+                            color = Muted.copy(alpha = if (generated) 0.7f else 0.55f),
+                            fontSize = 8.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        contentDescription = "编辑提示词",
+                        tint = AmberSoft,
+                        modifier = Modifier.size(15.dp),
                     )
                 }
             }
         }
     }
+}
+
+
+@Composable
+private fun PromptEditDialog(
+    item: GalgameGalleryItem,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+) {
+    var prompt by remember(item.id, item.prompt) { mutableStateOf(item.prompt) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑提示词", color = Paper) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(item.id, color = Amber, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                OutlinedTextField(
+                    value = prompt,
+                    onValueChange = { prompt = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 5,
+                    maxLines = 8,
+                    label = { Text("Prompt") },
+                    textStyle = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "保存后会删除当前图片并立即重绘这一张。",
+                    color = Muted,
+                    fontSize = 10.sp,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(prompt.trim()) },
+                enabled = prompt.isNotBlank(),
+            ) { Text("保存并重绘", color = if (prompt.isNotBlank()) Amber else Muted) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消", color = Muted) }
+        },
+    )
 }

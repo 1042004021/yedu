@@ -262,6 +262,7 @@ fun PlayerScreen(
     if (showGallery) {
         GalleryDialog(
             items = vm.galleryItems,
+            onRegenerate = { imageId, prompt -> vm.regenerateImage(imageId, prompt) },
             onDismiss = { showGallery = false },
         )
     }

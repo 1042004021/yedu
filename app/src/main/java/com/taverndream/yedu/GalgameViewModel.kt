@@ -635,7 +635,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
             .firstOrNull { it.isFile }
             ?.absolutePath
 
-    private fun updateCurrentCover(path: String) {
+    private fun updateCurrentCover(path: String?) {
         val key = currentScriptKey ?: return
         library = library.map {
             if (it.key == key) it.copy(coverPath = path) else it
@@ -652,7 +652,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         }.toMap()
     }
 
-    private fun startImageWorker() {
+    private fun startImageWorker(priorityImageId: String? = null) {
         imageJob?.cancel()
         val token = ++imageGeneration
         val s = script ?: return
@@ -663,12 +663,15 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
             return
         }
         val specs = s.images.associateBy { it.id }
-        val planned = GalgameImagePlanner.plan(s, history, currentImageId)
+        var planned = GalgameImagePlanner.plan(s, history, currentImageId)
             .mapNotNull { specs[it] }
             .filter { spec ->
                 spec.prompt.isNotBlank() &&
                     imagePaths[spec.id]?.let { File(it).isFile } != true
             }
+        if (priorityImageId != null) {
+            planned = planned.sortedBy { if (it.id == priorityImageId) 0 else 1 }
+        }
         if (planned.isEmpty()) {
             imageBusy = false
             imageProgress = null
@@ -723,6 +726,38 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         }
+    }
+
+    /** 修改单张图片提示词并立即重绘；只重绘这一张，随后继续原队列。 */
+    fun regenerateImage(imageId: String, prompt: String) {
+        val s = script ?: return
+        val spec = s.images.firstOrNull { it.id == imageId } ?: return
+        val cleaned = prompt.trim()
+        if (cleaned.isBlank()) {
+            toast = "提示词不能为空"
+            return
+        }
+        val updated = s.copy(
+            images = s.images.map {
+                if (it.id == imageId) it.copy(prompt = cleaned) else it
+            }
+        )
+        script = updated
+        currentScriptKey?.let { key ->
+            library = library.map { if (it.key == key) it.copy(script = updated) else it }
+        }
+        currentScriptFile?.let { file ->
+            viewModelScope.launch(Dispatchers.IO) {
+                runCatching { file.writeText(GalgameScriptCodec.encode(updated)) }
+            }
+        }
+        imagePaths[imageId]?.let { old -> runCatching { File(old).delete() } }
+        imagePaths.remove(imageId)
+        imageRevision++
+        if (imageId == currentCoverImageId) updateCurrentCover(null)
+        if (imageId == currentImageId) renderCurrent()
+        toast = "正在重绘 ${spec.id}…"
+        startImageWorker(priorityImageId = imageId)
     }
 
     private fun saveState() {
