@@ -127,7 +127,7 @@
 |------|----------|----------|----------|
 | 修改 | `app/src/main/java/com/taverndream/yedu/ui/LibraryScreen.kt` | `ScriptLibraryList`、`ScriptCoverCard` | 长按菜单、上传弹窗、删除确认、导出 launcher |
 | 修改 | `app/src/main/java/com/taverndream/yedu/ui/CloudScreen.kt` | `CloudScreen`、`CloudServerDialog` | 只保留列表/下载，右上角服务器设置 |
-| 修改 | `app/src/main/java/com/taverndream/yedu/GalgameViewModel.kt` | `uploadScript`、`deleteScript`、`exportScriptJson`、`exportWorkZip`、`buildImagePack` | 按 key 上传、删除、导出、流式图包 |
+| 修改 | `app/src/main/java/com/taverndream/yedu/GalgameViewModel.kt` | `uploadScript`、`deleteScript`、`exportScriptJson`、`exportWorkZip`、`importWorkPackage`、`buildImagePack` | 按 key 上传、删除、导入/导出完整作品、流式图包 |
 | 修改 | `app/src/main/java/com/taverndream/yedu/net/CloudApiClient.kt` | `uploadFile`、`downloadToFile` | 文件流上传与流式下载 |
 | 修改 | `server/src/config.js`、`server/.env.example`、`server/README.md` | `MAX_UPLOAD_BYTES` | 单文件上限改为 512MB |
 | 修改 | `README.md` | 云端作品库说明 | 长按上传、导出、删除和 512MB |
@@ -162,3 +162,4 @@
 | 2026-11-13 | 完成长按操作、删除、导出、云端页精简和 512MB 流式传输 | 用户补充需求 | 用户 |
 | 2026-11-13 | 增加按钮按压缩放反馈、云端作品骨架屏和操作加载指示 | 用户补充体验需求 | 用户 |
 | 2026-11-13 | 增加导航按钮触感/动画、页面切换动画和云端列表/封面缓存 | 用户补充体验需求 | 用户 |
+| 2026-11-13 | 支持导入完整作品包 ZIP（script.json + images/） | 用户补充功能需求 | 用户 |

@@ -103,7 +103,7 @@ private fun GalgameApp(vm: GalgameViewModel = viewModel()) {
             when (target) {
                 Screen.Library -> LibraryScreen(
                     vm = vm,
-                    onImport = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                    onImport = { importLauncher.launch(arrayOf("application/json", "application/zip", "application/x-zip-compressed", "text/plain", "application/octet-stream", "*/*")) },
                     onContinue = { screen = Screen.Player },
                     onSettings = { screen = Screen.Settings },
                     onCloud = { screen = Screen.Cloud },
@@ -111,7 +111,7 @@ private fun GalgameApp(vm: GalgameViewModel = viewModel()) {
                 Screen.Player -> PlayerScreen(
                     vm = vm,
                     onBack = { screen = Screen.Library },
-                    onImport = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
+                    onImport = { importLauncher.launch(arrayOf("application/json", "application/zip", "application/x-zip-compressed", "text/plain", "application/octet-stream", "*/*")) },
                     onSettings = { screen = Screen.Settings },
                 )
                 Screen.Settings -> SettingsScreen(

@@ -211,11 +211,11 @@ private fun EmptyLibraryCard(onImport: () -> Unit) {
             }
         }
         Text(
-            "导入一个 JSON 文件。剧情、选项、分支和每张图的提示词都在里面。",
+            "导入 JSON 剧本，或导入包含 script.json 和 images/ 的完整作品包。",
             color = Muted,
             fontSize = 13.sp,
         )
-        PrimaryAction("导入 JSON 剧本", onImport)
+        PrimaryAction("导入 JSON / 作品包", onImport)
         Text(
             "不需要新建世界，也不需要图片包。",
             modifier = Modifier.fillMaxWidth(),
@@ -284,7 +284,7 @@ private fun ScriptLibraryList(
             }
         }
         Spacer(Modifier.height(2.dp))
-        PrimaryAction("导入新剧本", onImport)
+        PrimaryAction("导入剧本 / 作品包", onImport)
         Text(
             "长按作品可上传云端、导出 JSON / 完整作品或删除本地。",
             modifier = Modifier.fillMaxWidth(),

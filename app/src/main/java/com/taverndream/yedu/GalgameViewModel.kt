@@ -319,39 +319,146 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             loading = true
             error = null
+            var packageImport = false
             try {
-                val raw = withContext(Dispatchers.IO) {
-                    getApplication<Application>().contentResolver.openInputStream(uri)
-                        ?.bufferedReader()
-                        ?.use { it.readText() }
-                        ?: throw IllegalStateException("无法读取文件")
+                packageImport = withContext(Dispatchers.IO) { isZipPackage(uri) }
+                if (packageImport) {
+                    importWorkPackage(uri)
+                } else {
+                    importJsonScript(uri)
                 }
-                val result = GalgameScriptCodec.validate(raw)
-                if (!result.ok || result.script == null) {
-                    error = "剧本校验失败：\n" + result.errors.joinToString("\n").take(1600)
-                    return@launch
-                }
-                imageJob?.cancel()
-                val folder = withContext(Dispatchers.IO) {
-                    val target = newScriptFolder(result.script)
-                    File(target, "script.json").writeText(raw)
-                    target
-                }
-                currentScriptKey = folder.name
-                runCatching { lastScriptFile.writeText(folder.name) }
-                refreshLibrary()
-                applyScript(result.script, folder, restore = false)
-                toast = "已导入《${result.script.title}》，正在优先生成封面"
-                importSerial++
             } catch (t: CancellationException) {
                 throw t
             } catch (t: Throwable) {
-                error = "剧本导入失败：${t.message}"
+                error = (if (packageImport) "作品包导入失败：" else "剧本导入失败：") +
+                    (t.message ?: "未知错误")
             } finally {
                 loading = false
             }
         }
     }
+
+    private suspend fun importJsonScript(uri: Uri) {
+        val raw = withContext(Dispatchers.IO) {
+            getApplication<Application>().contentResolver.openInputStream(uri)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                ?: throw IllegalStateException("无法读取文件")
+        }
+        val parsed = parseScriptOrThrow(raw)
+        imageJob?.cancel()
+        val folder = withContext(Dispatchers.IO) {
+            val target = newScriptFolder(parsed)
+            File(target, "script.json").writeText(raw)
+            target
+        }
+        finishImport(parsed, folder, "已导入《${parsed.title}》，正在优先生成封面")
+    }
+
+    private suspend fun importWorkPackage(uri: Uri) {
+        val raw = withContext(Dispatchers.IO) { readScriptFromZip(uri) }
+        val parsed = parseScriptOrThrow(raw)
+        imageJob?.cancel()
+        val folder = withContext(Dispatchers.IO) {
+            val target = newScriptFolder(parsed)
+            try {
+                File(target, "script.json").writeText(raw)
+                extractZipImages(uri, target)
+                target
+            } catch (t: Throwable) {
+                target.deleteRecursively()
+                throw t
+            }
+        }
+        finishImport(parsed, folder, "已导入作品包《${parsed.title}》，图片已恢复")
+    }
+
+    private suspend fun finishImport(parsed: GalgameScript, folder: File, message: String) {
+        currentScriptKey = folder.name
+        runCatching { lastScriptFile.writeText(folder.name) }
+        refreshLibrary()
+        applyScript(parsed, folder, restore = false)
+        toast = message
+        importSerial++
+    }
+
+    private fun parseScriptOrThrow(raw: String): GalgameScript {
+        val result = GalgameScriptCodec.validate(raw)
+        if (!result.ok || result.script == null) {
+            throw IllegalArgumentException(
+                "剧本校验失败：\n" + result.errors.joinToString("\n").take(1600),
+            )
+        }
+        return result.script
+    }
+
+    private fun isZipPackage(uri: Uri): Boolean {
+        getApplication<Application>().contentResolver.openInputStream(uri)?.use { input ->
+            val header = ByteArray(4)
+            val read = input.read(header)
+            return read >= 4 &&
+                header[0] == 0x50.toByte() &&
+                header[1] == 0x4b.toByte() &&
+                (header[2] == 0x03.toByte() || header[2] == 0x05.toByte() || header[2] == 0x07.toByte()) &&
+                (header[3] == 0x04.toByte() || header[3] == 0x06.toByte() || header[3] == 0x08.toByte())
+        }
+        return false
+    }
+
+    private fun readScriptFromZip(uri: Uri): String {
+        val input = getApplication<Application>().contentResolver.openInputStream(uri)
+            ?: throw IllegalStateException("无法读取作品包")
+        input.use {
+            ZipInputStream(it).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    val name = entry.name.replace('\\', '/')
+                    if (!entry.isDirectory && isScriptEntry(name)) {
+                        val bytes = zip.readBytes()
+                        if (bytes.size > MAX_LOCAL_SCRIPT_BYTES) {
+                            throw IllegalStateException("作品包里的 script.json 过大")
+                        }
+                        return String(bytes, StandardCharsets.UTF_8)
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+            }
+        }
+        throw IllegalArgumentException("作品包里没有找到 script.json")
+    }
+
+    private fun extractZipImages(uri: Uri, folder: File) {
+        val imageDir = File(folder, "images").apply { mkdirs() }
+        val root = imageDir.canonicalFile
+        val input = getApplication<Application>().contentResolver.openInputStream(uri)
+            ?: throw IllegalStateException("无法读取作品包")
+        input.use {
+            ZipInputStream(it).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    val name = entry.name.replace('\\', '/')
+                    if (!entry.isDirectory && isImageEntry(name)) {
+                        val fileName = name.substringAfterLast('/')
+                        if (fileName.isNotBlank() && !fileName.contains("..")) {
+                            val target = File(imageDir, fileName).canonicalFile
+                            if (target.path.startsWith(root.path + File.separator)) {
+                                target.outputStream().use { output -> zip.copyTo(output) }
+                            }
+                        }
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+            }
+        }
+    }
+
+    private fun isScriptEntry(name: String): Boolean =
+        name == "script.json" || name.endsWith("/script.json")
+
+    private fun isImageEntry(name: String): Boolean =
+        name.startsWith("images/") || name.contains("/images/")
 
     fun startNewGame() {
         val s = script ?: run {
@@ -1335,6 +1442,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val MAX_CLOUD_UPLOAD_BYTES = 512L * 1024 * 1024
         const val MAX_CLOUD_DOWNLOAD_BYTES = 512L * 1024 * 1024
+        const val MAX_LOCAL_SCRIPT_BYTES = 16L * 1024 * 1024
     }
 
     private fun safeId(id: String): String =
