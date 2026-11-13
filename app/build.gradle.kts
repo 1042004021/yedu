@@ -1,8 +1,18 @@
+import java.io.File
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+}
+
+val yeduKeystorePropertiesFile = File(System.getProperty("user.home"), ".config/yedu/keystore.properties")
+val yeduKeystoreProperties = Properties().apply {
+    if (yeduKeystorePropertiesFile.isFile) {
+        yeduKeystorePropertiesFile.inputStream().use { load(it) }
+    }
 }
 
 android {
@@ -20,10 +30,24 @@ android {
         }
     }
 
+    signingConfigs {
+        if (yeduKeystorePropertiesFile.isFile) {
+            create("release") {
+                storeFile = File(yeduKeystoreProperties.getProperty("storeFile"))
+                storePassword = yeduKeystoreProperties.getProperty("storePassword")
+                keyAlias = yeduKeystoreProperties.getProperty("keyAlias")
+                keyPassword = yeduKeystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (yeduKeystorePropertiesFile.isFile) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
