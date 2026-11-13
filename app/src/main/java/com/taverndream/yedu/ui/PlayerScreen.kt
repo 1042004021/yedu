@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,8 +26,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
@@ -59,11 +58,17 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -126,12 +131,45 @@ fun PlayerScreen(
 
     val node = vm.currentNode
     val line = vm.displayLines.getOrNull(vm.lineIndex)
+    val lineText = line?.text.orEmpty()
     val atEnd = vm.atEnd
     val choices = vm.choices
-    val canAdvance = !vm.isEnding &&
-        (vm.lineIndex < vm.displayLines.lastIndex || (choices.isEmpty() && node?.next?.isNotBlank() == true))
+    val hasSpeaker = line != null && !line.narration && line.speaker.isNotBlank()
+    val textStyle = TextStyle(
+        fontSize = if (line?.narration == true) 18.sp else 19.sp,
+        lineHeight = if (line?.narration == true) 29.sp else 31.sp,
+        fontStyle = if (line?.narration == true) FontStyle.Italic else FontStyle.Normal,
+    )
+    // 对话框高度固定；留给正文的高度按是否有角色名标签区分。
+    val textMaxHeight = if (hasSpeaker) 96.dp else 132.dp
 
-    Box(Modifier.fillMaxSize().background(Ink).clickable { if (canAdvance) vm.advance() }) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
+        val density = LocalDensity.current
+        val measurer = rememberTextMeasurer()
+        val textWidthPx = with(density) { (maxWidth - 40.dp).toPx().toInt().coerceAtLeast(1) }
+        val textHeightPx = with(density) { textMaxHeight.toPx().toInt().coerceAtLeast(1) }
+        val lineHeightPx = with(density) { textStyle.lineHeight.toPx() }.coerceAtLeast(1f)
+        val maxLines = (textHeightPx / lineHeightPx).toInt().coerceAtLeast(1)
+        val pages = remember(lineText, line?.narration, hasSpeaker, textWidthPx, maxLines) {
+            paginateText(lineText, textStyle, textWidthPx, maxLines, measurer)
+        }
+        var pageIndex by remember(lineText, line?.speaker, line?.narration, vm.lineIndex) {
+            mutableStateOf(0)
+        }
+        LaunchedEffect(pages) {
+            if (pageIndex > pages.lastIndex) pageIndex = pages.lastIndex
+        }
+        val pageText = pages.getOrElse(pageIndex) { "" }
+        val hasMorePages = pageIndex < pages.lastIndex
+        val canAdvance = hasMorePages || (!vm.isEnding &&
+            (vm.lineIndex < vm.displayLines.lastIndex ||
+                (choices.isEmpty() && node?.next?.isNotBlank() == true)))
+
+        fun advanceOne() {
+            if (pageIndex < pages.lastIndex) pageIndex++ else if (!vm.isEnding) vm.advance()
+        }
+
+        Box(Modifier.fillMaxSize().clickable { if (canAdvance) advanceOne() }) {
         PlayerBackground(
             path = vm.backgroundPath,
             loading = vm.imageBusy && vm.backgroundPath == null,
@@ -180,11 +218,14 @@ fun PlayerScreen(
                 )
                 else -> DialoguePanel(
                     line = line,
+                    pageText = pageText,
+                    pageIndex = pageIndex,
+                    pageCount = pages.size,
                     atEnd = atEnd,
                     canAdvance = canAdvance,
                     imageBusy = vm.imageBusy,
                     scene = (vm.history.size).coerceAtLeast(1),
-                    onLineClick = { if (canAdvance) vm.advance() },
+                    onLineClick = { if (canAdvance) advanceOne() },
                 )
             }
         }
@@ -197,6 +238,7 @@ fun PlayerScreen(
                 .statusBarsPadding()
                 .padding(top = 62.dp),
         )
+        }
     }
 }
 
@@ -349,9 +391,60 @@ private fun PlayerTopBar(
     }
 }
 
+/** 按固定宽高把一段文字切成多页，避免对话框被长文本撑高。 */
+private fun paginateText(
+    text: String,
+    style: TextStyle,
+    widthPx: Int,
+    maxLines: Int,
+    measurer: TextMeasurer,
+): List<String> {
+    if (text.isBlank()) return listOf("")
+    val pages = mutableListOf<String>()
+    var start = 0
+    while (start < text.length) {
+        val remaining = text.substring(start)
+        val layout = measurer.measure(
+            text = AnnotatedString(remaining),
+            style = style,
+            overflow = TextOverflow.Clip,
+            softWrap = true,
+            maxLines = maxLines,
+            constraints = Constraints(maxWidth = widthPx),
+        )
+        if (!layout.hasVisualOverflow) {
+            pages += remaining.trimEnd()
+            break
+        }
+        var end = layout.getLineEnd(maxLines - 1, visibleEnd = false)
+        if (end <= 0) end = remaining.length
+        if (end < remaining.length) {
+            // 英文尽量在空格/换行处断页，中文没有空格时按行尾断。
+            val breakAt = remaining.substring(0, end)
+                .lastIndexOfAny(charArrayOf(' ', '\n', '\t'))
+            if (breakAt > 0 && end - breakAt <= 24) end = breakAt
+            if (end > 0 && end < remaining.length &&
+                Character.isLowSurrogate(remaining[end]) &&
+                Character.isHighSurrogate(remaining[end - 1])
+            ) {
+                end--
+            }
+        }
+        if (end <= 0) break
+        val page = remaining.substring(0, end).trim()
+        if (page.isNotEmpty()) pages += page
+        start += end
+        while (start < text.length && text[start].isWhitespace()) start++
+    }
+    return pages.ifEmpty { listOf("") }
+}
+
 @Composable
 private fun DialoguePanel(
     line: DisplayLine?,
+    pageText: String,
+    pageIndex: Int,
+    pageCount: Int,
     atEnd: Boolean,
     canAdvance: Boolean,
     imageBusy: Boolean,
@@ -370,7 +463,7 @@ private fun DialoguePanel(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(228.dp)
+                .height(250.dp)
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(9.dp),
         ) {
@@ -394,13 +487,10 @@ private fun DialoguePanel(
                 }
             }
 
-            val textScroll = rememberScrollState()
-            LaunchedEffect(line?.text) { textScroll.scrollTo(0) }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .verticalScroll(textScroll),
+                    .weight(1f),
             ) {
                 Crossfade(targetState = line, animationSpec = tween(150), label = "galgame-line") { current ->
                     if (current == null) {
@@ -423,7 +513,7 @@ private fun DialoguePanel(
                                 }
                             }
                             Text(
-                                current.text,
+                                pageText,
                                 color = if (current.narration) Muted else Paper,
                                 fontSize = if (current.narration) 18.sp else 19.sp,
                                 lineHeight = if (current.narration) 29.sp else 31.sp,
@@ -436,25 +526,41 @@ private fun DialoguePanel(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    when {
-                        !atEnd -> "点击继续"
-                        canAdvance -> "点击画面进入下一幕"
-                        else -> "选择你的行动"
-                    },
-                    color = Muted,
-                    fontSize = 10.sp,
-                )
-                if (canAdvance) {
-                    Icon(
-                        Icons.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = AmberSoft,
-                        modifier = Modifier.size(16.dp),
+                if (pageCount > 1) {
+                    Text(
+                        "第 ${pageIndex + 1} / $pageCount 页",
+                        color = Muted,
+                        fontSize = 9.sp,
+                        letterSpacing = 0.5.sp,
                     )
+                } else {
+                    Spacer(Modifier.width(1.dp))
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        when {
+                            pageIndex < pageCount - 1 -> "点击继续"
+                            !atEnd -> "点击继续"
+                            canAdvance -> "点击画面进入下一幕"
+                            else -> "选择你的行动"
+                        },
+                        color = Muted,
+                        fontSize = 10.sp,
+                    )
+                    if (canAdvance) {
+                        Icon(
+                            Icons.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = AmberSoft,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
                 }
             }
         }
