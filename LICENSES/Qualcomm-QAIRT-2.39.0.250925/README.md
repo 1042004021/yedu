@@ -36,4 +36,4 @@ QNN 为 Qualcomm Technologies, Inc. 的专有软件，不受本项目 CC BY-NC 4
 | 本地 V81 Skel | 10248204 | `716e073e09922922bf977dee2ae0e2342f9c6c35ee54d64cba36bb1490172b3d` |
 | 官方 `lib/hexagon-v81/unsigned/` V81 Skel | 10293348 | `218d8902920183449c0a608de12e226ecac9ddad180333610ac103a04a7ef023` |
 
-没有擅自替换已经可用的本地库。公开 APK 前仍需查清差异或使用官方库并完成对应真机回归。
+没有擅自替换已经可用的本地库。2026-11-13 补充核对：本地 V81 Skel 与 local-dream v2.8.1 官方 Release APK 内同名文件的 SHA-256 完全一致，可确认当前文件来自 local-dream 的发布链；但与 Qualcomm 官方 ZIP 的同名文件仍有大小差异。公开 APK 前仍建议使用官方库替换并完成对应真机回归，或保留本来源记录并完成最终发布核对。

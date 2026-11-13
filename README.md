@@ -172,7 +172,16 @@ npm start
 - 生图可执行文件 `libstable_diffusion_core.so` 未纳入 Git；排除二进制不消除改编源码本身的署名和许可义务。
 - 如果你分发源码或 APK，请保留本 README、`NOTICE`、`LICENSES/` 和 `THIRD_PARTY_NOTICES.md` 中的署名、许可证与修改说明。
 
-其他历史来源、第三方依赖、QNN 运行库、模型权重和内容版权边界见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)；该文件不是法律意见，公开分发前仍应做一次依赖与许可证核对。
+### Qualcomm QNN SDK
+
+本项目的 ARM64 构建还包含 Qualcomm QNN 运行库，用于 Snapdragon NPU 加速。
+
+- QNN 是 Qualcomm Technologies, Inc. 的专有软件，不适用本项目 Apache-2.0 或 local-dream CC BY-NC 4.0。
+- 按 Qualcomm AI Stack License 第 1(iv) 条，QNN 仅以目标代码形式作为应用组成部分分发，不单独分发 SDK。
+- `NOTICE.txt`、`QNN_NOTICE.txt` 和许可说明随 APK 打入 `assets/licenses/`，分发时不得移除。
+- 当前 `libQnnHtpV81Skel.so` 与 local-dream v2.8.1 官方 Release APK 内同名文件 SHA-256 一致；与 Qualcomm 官方 ZIP 的同名文件仍有大小差异，来源链详见 `LICENSES/Qualcomm-QAIRT-2.39.0.250925/README.md`。
+
+其他历史来源、第三方依赖、模型权重和内容版权边界见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)；该文件不是法律意见，公开分发前仍应做一次依赖与许可证核对。
 
 ## 许可证
 

@@ -57,7 +57,9 @@
 
 本仓库公开源码不表示已经审查通过所有 APK 分发义务。
 当前不在 Git 中保存 native 运行库、APK、模型、个人角色卡或日志。
-QNN 本身并非一律禁止随 APK 分发。当前仍有一个 V81 Skel 库与官方包大小及 CRC32 不匹配，且其他 native 组件及传递依赖的分发核对未全部完成，因此尚未发布 APK Release 附件。
-构建时将本声明、项目许可、NOTICE 及 `LICENSES/` 复制到 APK 的 `assets/licenses/`；这不将 QNN 重新许可为 CC BY-NC 或 Apache-2.0。
 
-核对日期：2026-11-02。本文是项目来源记录，不构成法律意见。
+QNN 本身并非一律禁止随 APK 分发。Qualcomm AI Stack License 第 1(iv) 条允许以目标代码形式、作为应用组成部分分发和再许可，不允许单独分发 SDK。构建时将本声明、项目许可、NOTICE 及 `LICENSES/` 复制到 APK 的 `assets/licenses/`；这不将 QNN 重新许可为 CC BY-NC 或 Apache-2.0。
+
+2026-11-13 补充核对：本地 `libQnnHtpV81Skel.so` 与 local-dream v2.8.1 官方 Release APK 内同名文件的 SHA-256 完全一致（`716e073e09922922bf977dee2ae0e2342f9c6c35ee54d64cba36bb1490172b3d`）；该文件与 Qualcomm 官方 ZIP 的同名文件仍有大小差异。公开 APK 前仍需保留 QNN NOTICE、完成 APK 签名，并做最终 native 组件与依赖核对。该补充记录不构成法律意见，也不表示 Qualcomm 或 local-dream 作者认可本项目。
+
+核对日期：2026-11-13。本文是项目来源记录，不构成法律意见。
