@@ -99,10 +99,7 @@ private fun GalgameApp(vm: GalgameViewModel = viewModel()) {
                 Screen.Library -> LibraryScreen(
                     vm = vm,
                     onImport = { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) },
-                    onContinue = {
-                        if (!vm.hasSave) vm.startNewGame()
-                        screen = Screen.Player
-                    },
+                    onContinue = { screen = Screen.Player },
                     onSettings = { screen = Screen.Settings },
                 )
                 Screen.Player -> PlayerScreen(

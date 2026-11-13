@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.taverndream.yedu.GalgameLibraryEntry
 import com.taverndream.yedu.GalgameViewModel
 
 @Composable
@@ -88,8 +89,8 @@ fun LibraryScreen(
             Spacer(Modifier.height(30.dp))
             when {
                 vm.loading -> LoadingCard()
-                !vm.hasScript -> EmptyLibraryCard(onImport = onImport)
-                else -> ScriptLibraryCard(
+                !vm.hasScripts -> EmptyLibraryCard(onImport = onImport)
+                else -> ScriptLibraryList(
                     vm = vm,
                     onContinue = onContinue,
                     onImport = onImport,
@@ -186,10 +187,48 @@ private fun EmptyLibraryCard(onImport: () -> Unit) {
 }
 
 @Composable
-private fun ScriptLibraryCard(
+private fun ScriptLibraryList(
     vm: GalgameViewModel,
     onContinue: () -> Unit,
     onImport: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        SectionTitle("剧本库", "${vm.library.size} 个 GAL")
+        vm.library.forEach { entry ->
+            ScriptLibraryCard(
+                vm = vm,
+                entry = entry,
+                isCurrent = vm.currentScriptKey == entry.key,
+                onOpen = {
+                    vm.selectScript(entry.key)
+                    onContinue()
+                },
+                onRestart = {
+                    vm.selectScript(entry.key)
+                    vm.startNewGame()
+                    onContinue()
+                },
+            )
+        }
+        Spacer(Modifier.height(2.dp))
+        PrimaryAction("导入新剧本", onImport)
+        Text(
+            "每次导入都会保留为一个独立剧本，存档和图片分别存放。",
+            modifier = Modifier.fillMaxWidth(),
+            color = Muted.copy(alpha = 0.75f),
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun ScriptLibraryCard(
+    vm: GalgameViewModel,
+    entry: GalgameLibraryEntry,
+    isCurrent: Boolean,
+    onOpen: () -> Unit,
+    onRestart: () -> Unit,
 ) {
     SectionCard {
         Row(
@@ -199,22 +238,23 @@ private fun ScriptLibraryCard(
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    vm.scriptTitle,
+                    entry.title,
                     color = Paper,
                     fontFamily = FontFamily.Serif,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    MetaChip("${vm.nodeCount} 幕")
-                    MetaChip("${vm.imageCount} 张图", color = Rose)
-                    if (vm.imageBusy) MetaChip("绘制中", color = Amber)
+                    MetaChip("${entry.nodeCount} 幕")
+                    MetaChip("${entry.imageCount} 张图", color = Rose)
+                    if (isCurrent && vm.imageBusy) MetaChip("绘制中", color = Amber)
+                    if (isCurrent) MetaChip("当前", color = AmberSoft)
                 }
             }
             Text("JSON", color = Muted.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
 
-        if (vm.imageBusy) {
+        if (isCurrent && vm.imageBusy) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -229,25 +269,18 @@ private fun ScriptLibraryCard(
         }
 
         Text(
-            vm.currentNode?.title?.takeIf { it.isNotBlank() }?.let { "上次停在：$it" }
+            entry.currentNodeTitle.takeIf { it.isNotBlank() }?.let { "上次停在：$it" }
                 ?: "从第一幕开始",
             color = Muted,
             fontSize = 12.sp,
         )
 
         Spacer(Modifier.height(2.dp))
-        PrimaryAction(if (vm.hasSave) "继续故事" else "开始故事", onContinue)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            SecondaryAction(
-                text = "从头开始",
-                onClick = { vm.startNewGame(); onContinue() },
-                modifier = Modifier.weight(1f),
-            )
-            SecondaryAction(
-                text = "更换剧本",
-                onClick = onImport,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        PrimaryAction(if (entry.hasSave) "继续故事" else "开始故事", onOpen)
+        SecondaryAction(
+            text = "从头开始",
+            onClick = onRestart,
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }

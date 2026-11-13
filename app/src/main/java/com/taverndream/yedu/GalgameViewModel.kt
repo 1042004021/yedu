@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.taverndream.yedu.data.GalgameHistoryEntry
+import com.taverndream.yedu.data.GalgameImagePlanner
 import com.taverndream.yedu.data.GalgameImageSpec
 import com.taverndream.yedu.data.GalgameJson
 import com.taverndream.yedu.data.GalgameSave
@@ -31,6 +32,45 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
+/** 剧本库中的一条记录；每个条目对应一个独立目录、存档和图片目录。 */
+data class GalgameLibraryEntry(
+    val key: String,
+    val title: String,
+    val nodeCount: Int,
+    val imageCount: Int,
+    val hasSave: Boolean,
+    val currentNodeTitle: String,
+    val lastPlayedAt: Long,
+    val script: GalgameScript,
+)
+
+/** 剧情拓扑中的一条出边。 */
+data class GalgameGraphEdge(
+    val label: String,
+    val targetId: String,
+    val targetTitle: String,
+)
+
+/** 剧情拓扑节点。 */
+data class GalgameGraphNode(
+    val id: String,
+    val title: String,
+    val depth: Int,
+    val ending: Boolean,
+    val current: Boolean,
+    val visited: Boolean,
+    val imageCount: Int,
+    val edges: List<GalgameGraphEdge>,
+)
+
+/** 画廊条目：未生成时 path 为空。 */
+data class GalgameGalleryItem(
+    val id: String,
+    val prompt: String,
+    val kind: String,
+    val path: String?,
+)
+
 /** 玩家当前看到的一行；旁白和台词统一成同一种展示模型。 */
 data class DisplayLine(
     val speaker: String,
@@ -50,9 +90,9 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     val settings = GalgameSettings(app)
 
     private val rootDir = File(app.filesDir, "galgame_json").apply { mkdirs() }
-    private val scriptFile = File(rootDir, "script.json")
-    private val saveFile = File(rootDir, "save.json")
-    private val imageRoot = File(rootDir, "images").apply { mkdirs() }
+    private val scriptsDir = File(rootDir, "scripts").apply { mkdirs() }
+    private val legacyImageRoot = File(rootDir, "images")
+    private val lastScriptFile = File(rootDir, "last_script.txt")
     private val imageGenerator = GalgameImageGenerator(app, settings)
     private val imageMutex = Mutex()
 
@@ -65,6 +105,10 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     var hasScript by mutableStateOf(false)
         private set
     var hasSave by mutableStateOf(false)
+        private set
+    var library by mutableStateOf<List<GalgameLibraryEntry>>(emptyList())
+        private set
+    var currentScriptKey by mutableStateOf<String?>(null)
         private set
     var loading by mutableStateOf(false)
         private set
@@ -103,12 +147,95 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var upscalerRevision by mutableStateOf(0)
         private set
+    var imageRevision by mutableStateOf(0)
+        private set
 
     private var script: GalgameScript? = null
+    private var currentScriptFolder: File? = null
+    private var currentScriptFile: File? = null
+    private var currentSaveFile: File? = null
     private var scriptImageDir: File? = null
     private var imagePaths: MutableMap<String, String> = mutableMapOf()
     private var imageJob: Job? = null
     private var imageGeneration = 0
+
+    val hasScripts: Boolean
+        get() = library.isNotEmpty()
+
+    val graphNodes: List<GalgameGraphNode>
+        get() {
+            val s = script ?: return emptyList()
+            val byId = s.nodes.associateBy { it.id }
+            val depth = mutableMapOf<String, Int>()
+            val queue = ArrayDeque<String>()
+            if (s.start.isNotBlank()) {
+                queue.add(s.start)
+                depth[s.start] = 0
+            }
+            while (queue.isNotEmpty()) {
+                val id = queue.removeFirst()
+                val node = byId[id] ?: continue
+                val nextDepth = (depth[id] ?: 0) + 1
+                (node.choices.map { it.next } + node.next)
+                    .filter { it.isNotBlank() }
+                    .forEach { target ->
+                        val old = depth[target]
+                        if (old == null || nextDepth < old) {
+                            depth[target] = nextDepth
+                            queue.add(target)
+                        }
+                    }
+            }
+            val visited = history.map { it.nodeId }.toSet()
+            val currentId = currentNode?.id
+            val order = s.nodes.withIndex().associate { it.value.id to it.index }
+            return s.nodes.map { node ->
+                val edges = buildList {
+                    if (node.next.isNotBlank()) {
+                        add(
+                            GalgameGraphEdge(
+                                label = "继续",
+                                targetId = node.next,
+                                targetTitle = byId[node.next]?.title.orEmpty(),
+                            )
+                        )
+                    }
+                    node.choices.forEach { choice ->
+                        add(
+                            GalgameGraphEdge(
+                                label = choice.text,
+                                targetId = choice.next,
+                                targetTitle = byId[choice.next]?.title.orEmpty(),
+                            )
+                        )
+                    }
+                }
+                GalgameGraphNode(
+                    id = node.id,
+                    title = node.title.ifBlank { node.id },
+                    depth = depth[node.id] ?: Int.MAX_VALUE,
+                    ending = node.ending,
+                    current = node.id == currentId,
+                    visited = node.id in visited,
+                    imageCount = buildSet {
+                        if (node.image.isNotBlank()) add(node.image)
+                        node.lines.forEach { if (it.image.isNotBlank()) add(it.image) }
+                    }.size,
+                    edges = edges,
+                )
+            }.sortedWith(compareBy({ it.depth }, { order[it.id] ?: Int.MAX_VALUE }))
+        }
+
+    val galleryItems: List<GalgameGalleryItem>
+        get() {
+            // 订阅生成进度，画廊里的灰图会在图片落盘后自动变成可查看。
+            imageRevision
+            val specs = script?.images.orEmpty()
+            return specs.map { spec ->
+                val path = imagePaths[spec.id]?.takeIf { File(it).isFile }
+                GalgameGalleryItem(spec.id, spec.prompt, spec.kind, path)
+            }
+        }
 
     val atEnd: Boolean
         get() = displayLines.isEmpty() || lineIndex >= displayLines.lastIndex
@@ -149,15 +276,16 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                     error = "剧本校验失败：\n" + result.errors.joinToString("\n").take(1600)
                     return@launch
                 }
-                withContext(Dispatchers.IO) {
-                    scriptFile.parentFile?.mkdirs()
-                    scriptFile.writeText(raw)
-                    saveFile.delete()
-                    imageJob?.cancel()
-                    imageRoot.deleteRecursively()
-                    imageRoot.mkdirs()
+                imageJob?.cancel()
+                val folder = withContext(Dispatchers.IO) {
+                    val target = newScriptFolder(result.script)
+                    File(target, "script.json").writeText(raw)
+                    target
                 }
-                applyScript(result.script, restore = false)
+                currentScriptKey = folder.name
+                runCatching { lastScriptFile.writeText(folder.name) }
+                refreshLibrary()
+                applyScript(result.script, folder, restore = false)
                 importSerial++
             } catch (t: CancellationException) {
                 throw t
@@ -183,9 +311,11 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     fun advance() {
         val node = currentNode ?: return
         if (lineIndex < displayLines.lastIndex) {
+            val previousImage = currentImageId
             lineIndex++
             renderCurrent()
             saveState()
+            if (currentImageId != previousImage && currentImageId != null) startImageWorker()
             return
         }
         if (node.ending || node.choices.isNotEmpty()) return
@@ -213,6 +343,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     fun retryImage() {
         val id = currentImageId ?: return
         imagePaths.remove(id)
+        imageRevision++
         renderCurrent()
         startImageWorker()
     }
@@ -262,19 +393,91 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun loadFromDisk() {
-        hasSave = saveFile.isFile
-        if (!scriptFile.isFile) {
+        migrateLegacyScript()
+        refreshLibrary()
+        if (library.isEmpty()) {
             resetToEmpty()
             return
         }
-        val raw = withContext(Dispatchers.IO) { scriptFile.readText() }
+        val savedKey = runCatching { lastScriptFile.readText().trim() }.getOrNull()
+        val entry = library.firstOrNull { it.key == savedKey } ?: library.first()
+        currentScriptKey = entry.key
+        applyScript(entry.script, File(scriptsDir, entry.key), restore = true)
+    }
+
+    private suspend fun migrateLegacyScript() = withContext(Dispatchers.IO) {
+        val oldScript = File(rootDir, "script.json")
+        if (!oldScript.isFile) return@withContext
+        val raw = runCatching { oldScript.readText() }.getOrNull() ?: return@withContext
         val result = GalgameScriptCodec.validate(raw)
-        if (!result.ok || result.script == null) {
-            error = "剧本校验失败：\n" + result.errors.joinToString("\n").take(1600)
-            resetToEmpty()
+        val parsed = result.script ?: return@withContext
+        if (!result.ok) return@withContext
+        val folder = newScriptFolder(parsed)
+        runCatching {
+            oldScript.copyTo(File(folder, "script.json"), overwrite = true)
+            File(rootDir, "save.json").takeIf { it.isFile }
+                ?.copyTo(File(folder, "save.json"), overwrite = true)
+            val legacyImages = File(legacyImageRoot, safeId(parsed.id))
+            if (legacyImages.isDirectory) {
+                legacyImages.listFiles()?.forEach { file ->
+                    runCatching { file.copyTo(File(File(folder, "images"), file.name), overwrite = true) }
+                }
+            }
+            oldScript.delete()
+            File(rootDir, "save.json").delete()
+            legacyImageRoot.deleteRecursively()
+            lastScriptFile.writeText(folder.name)
+        }
+    }
+
+    private suspend fun refreshLibrary() = withContext(Dispatchers.IO) {
+        val entries = scriptsDir.listFiles()
+            .orEmpty()
+            .filter { it.isDirectory }
+            .mapNotNull { folder ->
+                val raw = runCatching { File(folder, "script.json").readText() }.getOrNull()
+                    ?: return@mapNotNull null
+                val result = GalgameScriptCodec.validate(raw)
+                val parsed = result.script ?: return@mapNotNull null
+                if (!result.ok) return@mapNotNull null
+                val save = readSaveFrom(folder, parsed.id)
+                val currentNodeTitle = save
+                    ?.let { s -> parsed.nodes.firstOrNull { it.id == s.nodeId }?.title.orEmpty() }
+                    .orEmpty()
+                val saveFile = File(folder, "save.json")
+                val lastPlayed = maxOf(
+                    saveFile.takeIf { it.isFile }?.lastModified() ?: 0L,
+                    File(folder, "script.json").lastModified(),
+                )
+                GalgameLibraryEntry(
+                    key = folder.name,
+                    title = parsed.title,
+                    nodeCount = parsed.nodes.size,
+                    imageCount = parsed.images.size,
+                    hasSave = save != null,
+                    currentNodeTitle = currentNodeTitle,
+                    lastPlayedAt = lastPlayed,
+                    script = parsed,
+                )
+            }
+            .sortedByDescending { it.lastPlayedAt }
+        library = entries
+    }
+
+    fun selectScript(key: String) {
+        val entry = library.firstOrNull { it.key == key } ?: return
+        val folder = File(scriptsDir, key)
+        if (!File(folder, "script.json").isFile) {
+            refreshAfterError("剧本不存在：$key")
             return
         }
-        applyScript(result.script, restore = true)
+        currentScriptKey = key
+        runCatching { lastScriptFile.writeText(key) }
+        applyScript(entry.script, folder, restore = true)
+    }
+
+    private fun refreshAfterError(message: String) {
+        error = message
     }
 
     private fun resetToEmpty() {
@@ -292,17 +495,28 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         backgroundPath = null
         currentImageId = null
         imagePaths = mutableMapOf()
+        imageRevision++
+        currentScriptKey = null
+        currentScriptFolder = null
+        currentScriptFile = null
+        currentSaveFile = null
+        scriptImageDir = null
     }
 
-    private fun applyScript(value: GalgameScript, restore: Boolean) {
+    private fun applyScript(value: GalgameScript, folder: File, restore: Boolean) {
         script = value
         hasScript = true
         scriptTitle = value.title
         nodeCount = value.nodes.size
         imageCount = value.images.size
-        scriptImageDir = File(imageRoot, safeId(value.id)).apply { mkdirs() }
+        currentScriptFolder = folder
+        currentScriptFile = File(folder, "script.json")
+        currentSaveFile = File(folder, "save.json")
+        scriptImageDir = File(folder, "images").apply { mkdirs() }
         imagePaths = existingImages(value).toMutableMap()
+        imageRevision++
         val save = if (restore) readSave(value.id) else null
+        hasSave = save != null
         if (save != null) {
             val node = value.nodes.firstOrNull { it.id == save.nodeId }
             if (node != null) {
@@ -318,7 +532,19 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         state = GalgameState()
         history = emptyList()
         showNode(value.start, null, addHistory = true)
-        startImageWorker()
+    }
+
+    private fun newScriptFolder(value: GalgameScript): File {
+        val base = safeId(value.id).ifBlank { "script" }
+        var folder = File(scriptsDir, base)
+        var suffix = 2
+        while (folder.exists()) {
+            folder = File(scriptsDir, "$base-$suffix")
+            suffix++
+        }
+        folder.mkdirs()
+        File(folder, "images").mkdirs()
+        return folder
     }
 
     private fun showNode(nodeId: String, choiceText: String?, addHistory: Boolean) {
@@ -339,6 +565,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         lineIndex = 0
         renderCurrent()
         saveState()
+        startImageWorker()
     }
 
     private fun renderCurrent() {
@@ -403,18 +630,30 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         val token = ++imageGeneration
         val s = script ?: return
         val dir = scriptImageDir ?: return
-        if (s.images.isEmpty()) return
-        val current = currentImageId
-        val ordered = s.images.sortedBy { if (it.id == current) 0 else 1 }
+        if (s.images.isEmpty()) {
+            imageBusy = false
+            imageProgress = null
+            return
+        }
+        val specs = s.images.associateBy { it.id }
+        val planned = GalgameImagePlanner.plan(s, history, currentImageId)
+            .mapNotNull { specs[it] }
+            .filter { spec ->
+                spec.prompt.isNotBlank() &&
+                    imagePaths[spec.id]?.let { File(it).isFile } != true
+            }
+        if (planned.isEmpty()) {
+            imageBusy = false
+            imageProgress = null
+            return
+        }
         imageBusy = true
         imageError = null
         imageJob = viewModelScope.launch {
             try {
-                ordered.forEachIndexed { index, spec ->
+                planned.forEachIndexed { index, spec ->
                     if (token != imageGeneration) return@launch
-                    if (imagePaths[spec.id]?.let { File(it).isFile } == true) return@forEachIndexed
-                    if (spec.prompt.isBlank()) return@forEachIndexed
-                    imageProgress = "生成图片 ${index + 1}/${ordered.size}…"
+                    imageProgress = "生成图片 ${index + 1}/${planned.size}…"
                     try {
                         val generated = imageMutex.withLock {
                             imageGenerator.generate(
@@ -438,6 +677,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                         }
                         if (token == imageGeneration) {
                             imagePaths[spec.id] = target.absolutePath
+                            imageRevision++
                             if (spec.id == currentImageId) renderCurrent()
                         }
                     } catch (t: CancellationException) {
@@ -458,6 +698,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     private fun saveState() {
         val s = script ?: return
         val node = currentNode ?: return
+        val file = currentSaveFile ?: return
         val save = GalgameSave(
             scriptId = s.id,
             nodeId = node.id,
@@ -466,16 +707,43 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
             lineIndex = lineIndex,
         )
         hasSave = true
+        val key = currentScriptKey
+        if (key != null) {
+            library = library.map {
+                if (it.key == key) {
+                    it.copy(
+                        hasSave = true,
+                        currentNodeTitle = node.title,
+                        lastPlayedAt = System.currentTimeMillis(),
+                    )
+                } else {
+                    it
+                }
+            }.sortedByDescending { it.lastPlayedAt }
+        }
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { saveFile.writeText(GalgameScriptCodec.encodeSave(save)) }
+            runCatching { file.writeText(GalgameScriptCodec.encodeSave(save)) }
         }
     }
 
     private fun readSave(scriptId: String): GalgameSave? {
-        if (!saveFile.isFile) return null
-        val save = runCatching { GalgameScriptCodec.parseSave(saveFile.readText()) }.getOrNull()
+        val save = currentSaveFile?.takeIf { it.isFile }?.let { file ->
+            runCatching { GalgameScriptCodec.parseSave(file.readText()) }.getOrNull()
+        } ?: return null
+        return save.takeIf { it.scriptId == scriptId }
+    }
+
+    private fun readSaveFrom(folder: File, scriptId: String): GalgameSave? {
+        val file = File(folder, "save.json").takeIf { it.isFile } ?: return null
+        val save = runCatching { GalgameScriptCodec.parseSave(file.readText()) }.getOrNull()
             ?: return null
         return save.takeIf { it.scriptId == scriptId }
+    }
+
+    fun jumpToNode(nodeId: String) {
+        val s = script ?: return
+        if (s.nodes.none { it.id == nodeId }) return
+        showNode(nodeId, "地图跳转", addHistory = true)
     }
 
     private fun safeId(id: String): String =

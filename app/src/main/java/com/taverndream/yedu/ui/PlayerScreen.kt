@@ -91,6 +91,8 @@ fun PlayerScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var menuOpen by remember { mutableStateOf(false) }
+    var showGraph by remember { mutableStateOf(false) }
+    var showGallery by remember { mutableStateOf(false) }
     var pendingSave by remember { mutableStateOf<String?>(null) }
     val saveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -196,6 +198,14 @@ fun PlayerScreen(
                     menuOpen = false
                     onImport()
                 },
+                onGraph = {
+                    menuOpen = false
+                    showGraph = true
+                },
+                onGallery = {
+                    menuOpen = false
+                    showGallery = true
+                },
                 onSettings = {
                     menuOpen = false
                     onSettings()
@@ -239,6 +249,24 @@ fun PlayerScreen(
                 .padding(top = 62.dp),
         )
         }
+    }
+
+    if (showGraph) {
+        BranchMapDialog(
+            nodes = vm.graphNodes,
+            currentNodeId = node?.id,
+            onJump = { nodeId ->
+                showGraph = false
+                vm.jumpToNode(nodeId)
+            },
+            onDismiss = { showGraph = false },
+        )
+    }
+    if (showGallery) {
+        GalleryDialog(
+            items = vm.galleryItems,
+            onDismiss = { showGallery = false },
+        )
     }
 }
 
@@ -327,6 +355,8 @@ private fun PlayerTopBar(
     onMenuDismiss: () -> Unit,
     onRestart: () -> Unit,
     onImport: () -> Unit,
+    onGraph: () -> Unit,
+    onGallery: () -> Unit,
     onSettings: () -> Unit,
     onSaveImage: (() -> Unit)?,
 ) {
@@ -375,6 +405,14 @@ private fun PlayerTopBar(
                 DropdownMenuItem(
                     text = { Text("更换剧本", color = Paper) },
                     onClick = onImport,
+                )
+                DropdownMenuItem(
+                    text = { Text("剧情拓谱", color = Paper) },
+                    onClick = onGraph,
+                )
+                DropdownMenuItem(
+                    text = { Text("画廊", color = Paper) },
+                    onClick = onGallery,
                 )
                 onSaveImage?.let {
                     DropdownMenuItem(

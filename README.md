@@ -5,6 +5,10 @@
 ## 特性
 
 - JSON 剧本：节点、选项、`next`、`ending`、effects、存档全部由 JSON 驱动。
+- 多剧本库：每次导入生成独立目录、存档和图片目录，可同时保留多个 GAL。
+- 剧情拓扑：按层级查看分支，点击节点可跳转继续剧情。
+- 画廊：展示当前剧本的全部图片；未生成的图片置灰，生成后自动变为可查看。
+- 生图顺序：直线剧情按节点顺序；分支先轮流各生成一张，选定分支后优先顺序生成该分支。
 - 全屏播放器：固定 250dp 台词框、长文本自动分页、选项面板、结局页。
 - 本地生图：端侧 SD1.5 / SDXL，不依赖云端 LLM 写剧情。
 - 模型多目录：支持公共存储、Download、自定义父目录，不必 adb 推 data。
@@ -39,7 +43,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 1. 打开「夜读」。
 2. 点「导入 JSON 剧本」。
-3. 选择剧本 JSON；导入成功后自动进入第一幕。
+3. 选择剧本 JSON；导入成功后自动进入第一幕。再次导入会新增一个剧本，不会覆盖已有剧本。
 
 示例与格式说明：
 
@@ -77,9 +81,20 @@ Android 11+ 在设置页点「授权所有文件访问」，再点「刷新目�
 
 ## 数据位置
 
-- 剧本：`filesDir/galgame_json/script.json`
-- 存档：`filesDir/galgame_json/save.json`
-- 生成图片：`filesDir/galgame_json/images/<剧本ID>/`
+每个剧本都有独立的目录：
+
+```text
+filesDir/galgame_json/
+├── scripts/
+│   ├── <剧本目录>/
+│   │   ├── script.json
+│   │   ├── save.json
+│   │   └── images/
+│   └── <另一个剧本目录>/
+└── last_script.txt
+```
+
+旧版本的单个 `galgame_json/script.json` 会在首次启动时自动迁移到 `scripts/` 下，不会丢失已有剧本、存档和图片。
 
 与 Tavern Dream 的包名和数据完全独立，可同时安装。
 
