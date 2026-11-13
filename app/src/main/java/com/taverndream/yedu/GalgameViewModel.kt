@@ -37,8 +37,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.nio.charset.StandardCharsets
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -189,10 +189,14 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         val kind: String,
         val name: String,
         val contentType: String,
-        val bytes: ByteArray,
+        val bytes: ByteArray? = null,
+        val file: File? = null,
     ) {
+        val size: Long
+            get() = file?.length() ?: bytes?.size?.toLong() ?: 0L
+
         val descriptor: CloudUploadDescriptor
-            get() = CloudUploadDescriptor(kind, name, bytes.size.toLong(), contentType)
+            get() = CloudUploadDescriptor(kind, name, size, contentType)
     }
 
     private var script: GalgameScript? = null
@@ -528,6 +532,92 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         applyScript(entry.script, folder, restore = true)
     }
 
+    /** 删除一个本地作品目录；如果删的是当前作品，自动切换到下一个。 */
+    fun deleteScript(key: String) {
+        val entry = library.firstOrNull { it.key == key } ?: return
+        val deletingCurrent = currentScriptKey == key
+        viewModelScope.launch {
+            if (deletingCurrent) {
+                imageScheduleJob?.cancel()
+                imageScheduleJob = null
+                imageJob?.cancel()
+                imageJob = null
+            }
+            val folder = File(scriptsDir, key)
+            val deleted = withContext(Dispatchers.IO) { folder.deleteRecursively() }
+            if (deletingCurrent) resetToEmpty()
+            refreshLibrary()
+            if (deletingCurrent) {
+                val next = library.firstOrNull()
+                if (next != null) {
+                    selectScript(next.key)
+                } else {
+                    runCatching { lastScriptFile.delete() }
+                }
+            }
+            toast = if (deleted) {
+                "已删除《${entry.title}》"
+            } else {
+                "删除失败：${entry.title}"
+            }
+        }
+    }
+
+    /** 把本地作品的 script.json 原样导出到用户选择的文件。 */
+    fun exportScriptJson(uri: Uri, key: String) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val source = File(File(scriptsDir, key), "script.json")
+                    if (!source.isFile) throw IllegalStateException("剧本文件不存在")
+                    val raw = source.readBytes()
+                    getApplication<Application>().contentResolver.openOutputStream(uri)?.use { output ->
+                        output.write(raw)
+                    } ?: throw IllegalStateException("无法写入导出文件")
+                }
+                toast = "已导出 JSON"
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                toast = "导出 JSON 失败：${t.message}"
+            }
+        }
+    }
+
+    /** 导出完整作品：script.json + images/，使用文件流写入 ZIP。 */
+    fun exportWorkZip(uri: Uri, key: String) {
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    val folder = File(scriptsDir, key)
+                    val scriptFile = File(folder, "script.json")
+                    if (!scriptFile.isFile) throw IllegalStateException("剧本文件不存在")
+                    getApplication<Application>().contentResolver.openOutputStream(uri)?.use { output ->
+                        ZipOutputStream(output).use { zip ->
+                            zip.putNextEntry(ZipEntry("script.json"))
+                            scriptFile.inputStream().use { it.copyTo(zip) }
+                            zip.closeEntry()
+                            File(folder, "images").takeIf { it.isDirectory }
+                                ?.listFiles()
+                                ?.filter { it.isFile }
+                                ?.sortedBy { it.name }
+                                ?.forEach { image ->
+                                    zip.putNextEntry(ZipEntry("images/${image.name}"))
+                                    image.inputStream().use { it.copyTo(zip) }
+                                    zip.closeEntry()
+                                }
+                        }
+                    } ?: throw IllegalStateException("无法写入导出文件")
+                }
+                toast = "已导出完整作品"
+            } catch (t: CancellationException) {
+                throw t
+            } catch (t: Throwable) {
+                toast = "导出完整作品失败：${t.message}"
+            }
+        }
+    }
+
     private fun refreshAfterError(message: String) {
         error = message
     }
@@ -821,6 +911,10 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         startImageWorker(priorityImageId = imageId)
     }
 
+    fun clearCloudError() {
+        cloudError = null
+    }
+
     fun saveCloudBaseUrl(raw: String): Boolean {
         return runCatching {
             val normalized = cloudApi.normalizeBaseUrl(raw)
@@ -934,19 +1028,21 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun uploadCurrentScript(includePack: Boolean, author: String) {
+    fun uploadScript(key: String, includePack: Boolean, author: String) {
         if (cloudBusy) return
-        val s = script ?: run {
-            toast = "请先选择剧本"
+        val entry = library.firstOrNull { it.key == key } ?: run {
+            toast = "本地作品不存在"
             return
         }
-        val scriptFile = currentScriptFile?.takeIf { it.isFile } ?: run {
-            toast = "当前剧本文件不存在"
+        val s = entry.script
+        val folder = File(scriptsDir, key)
+        val scriptFile = File(folder, "script.json").takeIf { it.isFile } ?: run {
+            toast = "剧本文件不存在"
             return
         }
         val base = settings.cloudBaseUrl
         if (base.isBlank()) {
-            cloudError = "请先填写云服务器地址"
+            cloudError = "请先在云端右上角设置服务器地址"
             return
         }
         val cleanAuthor = author.trim()
@@ -955,6 +1051,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             cloudBusy = true
             cloudError = null
+            var packFile: File? = null
             try {
                 val metadata = CloudWorkMetadata(
                     title = s.title,
@@ -978,10 +1075,14 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                     bytes = scriptBytes,
                 )
 
-                val coverFile = currentCoverImageId
-                    ?.let { imagePaths[it] }
+                // 封面默认上传：优先起始图，缺失时回退到第一张已生成图片。
+                val coverFile = entry.coverPath
+                    ?.takeIf { File(it).isFile }
                     ?.let { File(it) }
-                    ?.takeIf { it.isFile }
+                    ?: s.images.asSequence()
+                        .mapNotNull { imageFile(folder, it.id) }
+                        .map { File(it) }
+                        .firstOrNull()
                 if (coverFile != null) {
                     val ext = coverFile.extension.lowercase()
                     val contentType = when (ext) {
@@ -998,16 +1099,17 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                 }
 
                 if (includePack) {
-                    val pack = withContext(Dispatchers.IO) { buildImagePack() }
+                    val pack = withContext(Dispatchers.IO) { buildImagePack(folder) }
                     if (pack != null) {
-                        if (pack.size > MAX_CLOUD_UPLOAD_BYTES) {
-                            throw IllegalStateException("图片包超过 32MB，请减少图片后再上传")
+                        packFile = pack
+                        if (pack.length() > MAX_CLOUD_UPLOAD_BYTES) {
+                            throw IllegalStateException("图片包超过 512MB，请减少图片后再上传")
                         }
                         files += PreparedCloudFile(
                             kind = "pack",
                             name = "pack.zip",
                             contentType = "application/zip",
-                            bytes = pack,
+                            file = pack,
                         )
                     }
                 }
@@ -1021,7 +1123,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                     val remote = remoteByKind[file.kind]
                         ?: throw IllegalStateException("服务器没有返回 ${file.kind} 的上传地址")
                     cloudProgress = "上传 ${file.kind}（${index + 1}/${files.size}）…"
-                    cloudApi.uploadFile(remote, file.bytes)
+                    cloudApi.uploadFile(remote, file.bytes, file.file)
                 }
 
                 cloudProgress = "发布作品…"
@@ -1036,6 +1138,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
             } catch (t: Throwable) {
                 cloudError = t.message ?: "上传失败"
             } finally {
+                packFile?.delete()
                 cloudBusy = false
                 cloudProgress = null
             }
@@ -1054,11 +1157,12 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
             cloudDownloadingId = work.id
             cloudError = null
             var folder: File? = null
+            var packFile: File? = null
             try {
                 cloudProgress = "获取下载地址…"
                 val info = cloudApi.downloadInfo(base, work.id)
                 cloudProgress = "下载剧本…"
-                val scriptBytes = cloudApi.downloadBytes(info.script.url)
+                val scriptBytes = cloudApi.downloadBytes(info.script.url, 16L * 1024 * 1024)
                 val raw = String(scriptBytes, StandardCharsets.UTF_8)
                 val result = GalgameScriptCodec.validate(raw)
                 val parsed = result.script
@@ -1066,17 +1170,25 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
                     throw IllegalStateException("云端剧本校验失败：${result.errors.joinToString("；").take(300)}")
                 }
 
-                val packBytes = info.pack?.let {
+                info.pack?.let {
                     cloudProgress = "下载图包…"
-                    cloudApi.downloadBytes(it.url)
+                    packFile = cloudApi.downloadToFile(
+                        url = it.url,
+                        target = File(
+                            getApplication<Application>().cacheDir,
+                            "cloud-pack-${System.currentTimeMillis()}.zip",
+                        ),
+                        maxBytes = MAX_CLOUD_DOWNLOAD_BYTES,
+                    )
                 }
 
                 cloudProgress = "写入本地剧本库…"
+                val downloadedPack = packFile
                 folder = withContext(Dispatchers.IO) {
                     val target = newScriptFolder(parsed)
                     try {
                         File(target, "script.json").writeBytes(scriptBytes)
-                        if (packBytes != null) unzipImagePack(packBytes, target)
+                        if (downloadedPack != null) unzipImagePack(downloadedPack, target)
                         target
                     } catch (t: Throwable) {
                         target.deleteRecursively()
@@ -1094,6 +1206,7 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
             } catch (t: Throwable) {
                 cloudError = t.message ?: "下载失败"
             } finally {
+                packFile?.delete()
                 cloudBusy = false
                 cloudDownloadingId = null
                 cloudProgress = null
@@ -1101,25 +1214,33 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun buildImagePack(): ByteArray? {
-        val dir = scriptImageDir ?: return null
+    private fun buildImagePack(folder: File): File? {
+        val dir = File(folder, "images").takeIf { it.isDirectory } ?: return null
         val images = dir.listFiles()?.filter { it.isFile }.orEmpty()
         if (images.isEmpty()) return null
-        val output = ByteArrayOutputStream()
-        ZipOutputStream(output).use { zip ->
-            images.forEach { image ->
-                zip.putNextEntry(ZipEntry("images/${image.name}"))
-                image.inputStream().use { input -> input.copyTo(zip) }
-                zip.closeEntry()
+        val target = File(
+            getApplication<Application>().cacheDir,
+            "cloud-pack-${System.currentTimeMillis()}.zip",
+        )
+        try {
+            ZipOutputStream(FileOutputStream(target)).use { zip ->
+                images.forEach { image ->
+                    zip.putNextEntry(ZipEntry("images/${image.name}"))
+                    image.inputStream().use { input -> input.copyTo(zip) }
+                    zip.closeEntry()
+                }
             }
+            return target
+        } catch (t: Throwable) {
+            target.delete()
+            throw t
         }
-        return output.toByteArray()
     }
 
-    private fun unzipImagePack(bytes: ByteArray, folder: File) {
+    private fun unzipImagePack(file: File, folder: File) {
         val imageDir = File(folder, "images").apply { mkdirs() }
         val root = imageDir.canonicalFile
-        ZipInputStream(bytes.inputStream()).use { zip ->
+        ZipInputStream(file.inputStream()).use { zip ->
             var entry = zip.nextEntry
             while (entry != null) {
                 if (!entry.isDirectory) {
@@ -1189,7 +1310,8 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private companion object {
-        const val MAX_CLOUD_UPLOAD_BYTES = 32L * 1024 * 1024
+        const val MAX_CLOUD_UPLOAD_BYTES = 512L * 1024 * 1024
+        const val MAX_CLOUD_DOWNLOAD_BYTES = 512L * 1024 * 1024
     }
 
     private fun safeId(id: String): String =

@@ -1,8 +1,12 @@
 package com.taverndream.yedu.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,14 +25,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -198,12 +213,34 @@ private fun EmptyLibraryCard(onImport: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScriptLibraryList(
     vm: GalgameViewModel,
     onContinue: () -> Unit,
     onImport: () -> Unit,
 ) {
+    var actionFor by remember { mutableStateOf<GalgameLibraryEntry?>(null) }
+    var uploadFor by remember { mutableStateOf<GalgameLibraryEntry?>(null) }
+    var deleteFor by remember { mutableStateOf<GalgameLibraryEntry?>(null) }
+    var pendingJsonKey by remember { mutableStateOf<String?>(null) }
+    var pendingZipKey by remember { mutableStateOf<String?>(null) }
+
+    val jsonLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        val key = pendingJsonKey
+        pendingJsonKey = null
+        if (uri != null && key != null) vm.exportScriptJson(uri, key)
+    }
+    val zipLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        val key = pendingZipKey
+        pendingZipKey = null
+        if (uri != null && key != null) vm.exportWorkZip(uri, key)
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle("剧本库", "${vm.library.size} 个 GAL")
         vm.library.chunked(2).forEach { rowEntries ->
@@ -226,6 +263,7 @@ private fun ScriptLibraryList(
                             vm.startNewGame()
                             onContinue()
                         },
+                        onLongPress = { actionFor = entry },
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -235,15 +273,249 @@ private fun ScriptLibraryList(
         Spacer(Modifier.height(2.dp))
         PrimaryAction("导入新剧本", onImport)
         Text(
-            "每次导入都会保留为一个独立剧本，存档和图片分别存放。",
+            "长按作品可上传云端、导出 JSON / 完整作品或删除本地。",
             modifier = Modifier.fillMaxWidth(),
             color = Muted.copy(alpha = 0.75f),
             fontSize = 11.sp,
             textAlign = TextAlign.Center,
         )
     }
+
+    actionFor?.let { entry ->
+        LocalWorkActionSheet(
+            entry = entry,
+            onDismiss = { actionFor = null },
+            onUpload = {
+                actionFor = null
+                uploadFor = entry
+            },
+            onExportJson = {
+                actionFor = null
+                pendingJsonKey = entry.key
+                jsonLauncher.launch(exportFileName(entry.title, "json"))
+            },
+            onExportZip = {
+                actionFor = null
+                pendingZipKey = entry.key
+                zipLauncher.launch(exportFileName(entry.title, "zip"))
+            },
+            onDelete = {
+                actionFor = null
+                deleteFor = entry
+            },
+        )
+    }
+
+    uploadFor?.let { entry ->
+        UploadCloudDialog(
+            vm = vm,
+            entry = entry,
+            onDismiss = { uploadFor = null },
+        )
+    }
+
+    deleteFor?.let { entry ->
+        AlertDialog(
+            onDismissRequest = { deleteFor = null },
+            title = { Text("删除本地作品") },
+            text = {
+                Text("确定删除《${entry.title}》吗？图片和存档会一起删除，无法恢复。")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        deleteFor = null
+                        vm.deleteScript(entry.key)
+                    },
+                ) {
+                    Text("删除", color = Color(0xFFFF9E9E))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteFor = null }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LocalWorkActionSheet(
+    entry: GalgameLibraryEntry,
+    onDismiss: () -> Unit,
+    onUpload: () -> Unit,
+    onExportJson: () -> Unit,
+    onExportZip: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Panel,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 22.dp)
+                .padding(bottom = 18.dp),
+        ) {
+            Text(
+                entry.title,
+                color = Paper,
+                fontFamily = FontFamily.Serif,
+                fontSize = 21.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "本地作品 · 选择操作",
+                color = Muted,
+                fontSize = 11.sp,
+            )
+            Spacer(Modifier.height(10.dp))
+            HorizontalDivider(color = Color.White.copy(alpha = 0.08f))
+            WorkActionRow(
+                title = "上传到云端",
+                description = "封面默认上传，可选择是否包含图片包",
+                onClick = onUpload,
+            )
+            WorkActionRow(
+                title = "导出 JSON",
+                description = "只导出 script.json，方便备份或分享剧本",
+                onClick = onExportJson,
+            )
+            WorkActionRow(
+                title = "导出完整作品",
+                description = "script.json + images/ 打包为 ZIP",
+                onClick = onExportZip,
+            )
+            WorkActionRow(
+                title = "删除本地作品",
+                description = "同时删除图片和存档，无法恢复",
+                onClick = onDelete,
+                danger = true,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkActionRow(
+    title: String,
+    description: String,
+    onClick: () -> Unit,
+    danger: Boolean = false,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick)
+            .padding(vertical = 12.dp),
+    ) {
+        Text(
+            title,
+            color = if (danger) Color(0xFFFF9E9E) else Paper,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(description, color = Muted, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun UploadCloudDialog(
+    vm: GalgameViewModel,
+    entry: GalgameLibraryEntry,
+    onDismiss: () -> Unit,
+) {
+    var author by remember(entry.key) { mutableStateOf(vm.settings.cloudAuthor) }
+    var includePack by remember(entry.key) { mutableStateOf(true) }
+    var started by remember(entry.key) { mutableStateOf(false) }
+
+    LaunchedEffect(vm.cloudBusy, vm.cloudError) {
+        if (started && !vm.cloudBusy && vm.cloudError == null) onDismiss()
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!vm.cloudBusy) onDismiss() },
+        title = { Text("上传到云端") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(entry.title, color = Paper, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "封面默认上传；没有封面时会使用第一张已生成图片。",
+                    color = Muted,
+                    fontSize = 11.sp,
+                )
+                OutlinedTextField(
+                    value = author,
+                    onValueChange = { author = it },
+                    label = { Text("作者名（可选）") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Checkbox(
+                        checked = includePack,
+                        onCheckedChange = { includePack = it },
+                    )
+                    Column(Modifier.weight(1f)) {
+                        Text("包含图片包", color = Paper, fontSize = 13.sp)
+                        Text(
+                            "图片包使用文件流上传，支持最大 512MB",
+                            color = Muted,
+                            fontSize = 10.sp,
+                        )
+                    }
+                }
+                if (vm.cloudBusy) {
+                    vm.cloudProgress?.let {
+                        Text(it, color = AmberSoft, fontSize = 11.sp)
+                    }
+                }
+                vm.cloudError?.let {
+                    Text(it, color = Color(0xFFFFB4B4), fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    vm.clearCloudError()
+                    started = true
+                    vm.uploadScript(entry.key, includePack, author)
+                },
+                enabled = !vm.cloudBusy,
+            ) {
+                Text(if (vm.cloudBusy) "上传中…" else "上传")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !vm.cloudBusy) {
+                Text("取消")
+            }
+        },
+    )
+}
+
+private fun exportFileName(title: String, extension: String): String {
+    val base = title.ifBlank { "yedu-work" }
+        .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        .trim()
+        .ifBlank { "yedu-work" }
+    return "$base.$extension"
+}
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ScriptCoverCard(
     vm: GalgameViewModel,
@@ -251,10 +523,14 @@ private fun ScriptCoverCard(
     isCurrent: Boolean,
     onOpen: () -> Unit,
     onRestart: () -> Unit,
+    onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier,
+        modifier = modifier.combinedClickable(
+            onClick = onOpen,
+            onLongClick = onLongPress,
+        ),
         color = Panel,
         shape = MaterialTheme.shapes.large,
         border = BorderStroke(

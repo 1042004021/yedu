@@ -21,7 +21,10 @@ import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 class CloudApiException(
@@ -147,7 +150,19 @@ class CloudApiClient {
         return decode(raw, "获取下载地址失败")
     }
 
-    suspend fun uploadFile(file: CloudUploadFile, bytes: ByteArray) {
+    suspend fun uploadFile(
+        file: CloudUploadFile,
+        bytes: ByteArray? = null,
+        localFile: File? = null,
+    ) {
+        val mediaType = file.contentType.toMediaTypeOrNull()
+            ?: "application/octet-stream".toMediaTypeOrNull()
+        val body: RequestBody = when {
+            localFile != null -> localFile.asRequestBody(mediaType)
+            bytes != null -> bytes.toRequestBody(mediaType)
+            else -> throw CloudApiException(500, "没有可上传的文件内容")
+        }
+
         if (file.mode == "form") {
             val host = file.uploadHost?.takeIf { it.isNotBlank() }
                 ?: throw CloudApiException(500, "服务端没有返回七牛上传地址")
@@ -160,7 +175,7 @@ class CloudApiClient {
                 .addFormDataPart(
                     "file",
                     file.name.ifBlank { "file" },
-                    bytes.toRequestBody(file.contentType.toMediaTypeOrNull()),
+                    body,
                 )
                 .build()
             execute(Request.Builder().url(host).post(multipart).build())
@@ -169,7 +184,6 @@ class CloudApiClient {
 
         val url = file.uploadUrl?.takeIf { it.isNotBlank() }
             ?: throw CloudApiException(500, "服务端没有返回上传地址")
-        val body = bytes.toRequestBody(file.contentType.toMediaTypeOrNull())
         val builder = Request.Builder().url(url).put(body)
         file.headers.forEach { (name, value) ->
             // Content-Length 由 OkHttp 根据 body 自动计算，避免签名头不一致。
@@ -194,6 +208,41 @@ class CloudApiClient {
                 bytes
             }
         }
+
+    suspend fun downloadToFile(
+        url: String,
+        target: File,
+        maxBytes: Long = 512L * 1024 * 1024,
+    ): File = withContext(Dispatchers.IO) {
+        target.parentFile?.mkdirs()
+        try {
+            val request = Request.Builder().url(url).get().build()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw CloudApiException(response.code, "文件下载失败（${response.code}）")
+                }
+                val length = response.body?.contentLength() ?: -1L
+                if (length > maxBytes) throw CloudApiException(413, "文件超过下载大小限制")
+                var total = 0L
+                response.body?.byteStream()?.use { input ->
+                    target.outputStream().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            total += read
+                            if (total > maxBytes) throw CloudApiException(413, "文件超过下载大小限制")
+                            output.write(buffer, 0, read)
+                        }
+                    }
+                }
+            }
+            target
+        } catch (t: Throwable) {
+            target.delete()
+            throw t
+        }
+    }
 
     private fun urlFor(
         baseUrl: String,

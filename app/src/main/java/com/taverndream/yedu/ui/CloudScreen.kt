@@ -20,7 +20,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Checkbox
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -51,13 +52,11 @@ import java.util.Locale
 
 @Composable
 fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
-    var serverUrl by remember { mutableStateOf(vm.settings.cloudBaseUrl) }
     var query by remember { mutableStateOf("") }
-    var includePack by remember { mutableStateOf(true) }
-    var author by remember { mutableStateOf(vm.settings.cloudAuthor) }
+    var showServerDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        if (vm.settings.cloudBaseUrl.isNotBlank() && vm.cloudWorks.isEmpty()) {
+        if (vm.settings.cloudBaseUrl.isNotBlank()) {
             vm.refreshCloudWorks()
         }
     }
@@ -80,146 +79,101 @@ fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
                 }
                 Text(
                     "云端作品库",
+                    modifier = Modifier.weight(1f),
                     color = Paper,
                     fontFamily = FontFamily.Serif,
                     fontSize = 25.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
-            }
-
-            Spacer(Modifier.height(12.dp))
-            SectionCard {
-                SectionTitle("云服务器", vm.cloudServerStatus)
-                OutlinedTextField(
-                    value = serverUrl,
-                    onValueChange = { serverUrl = it },
-                    label = { Text("服务器地址") },
-                    placeholder = { Text("http://192.168.1.10:8787") },
-                    supportingText = { Text("支持 IP:端口，或 Cloudflare Tunnel 的 https 域名") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SecondaryAction(
-                        text = if (vm.cloudTesting) "连接中…" else "保存并测试",
-                        onClick = { vm.testCloudServer(serverUrl) },
-                        enabled = !vm.cloudTesting,
-                        modifier = Modifier.weight(1f),
-                    )
-                    SecondaryAction(
-                        text = "刷新云端",
-                        onClick = { vm.refreshCloudWorks(query) },
-                        enabled = !vm.cloudLoading,
-                        modifier = Modifier.weight(1f),
+                IconButton(onClick = { showServerDialog = true }) {
+                    Icon(
+                        Icons.Filled.Settings,
+                        contentDescription = "服务器设置",
+                        tint = Muted,
                     )
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
-            SectionCard {
-                SectionTitle("上传当前剧本", if (vm.hasScript) vm.scriptTitle else "未选择")
-                if (vm.hasScript) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "从云端下载作品到本地剧本库",
+                color = Muted,
+                fontSize = 11.sp,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+
+            Spacer(Modifier.height(14.dp))
+            if (vm.settings.cloudBaseUrl.isBlank()) {
+                SectionCard {
+                    SectionTitle("云服务器", "未配置")
                     Text(
-                        "${vm.nodeCount} 幕 · ${vm.imageCount} 图",
+                        "点右上角齿轮配置服务器地址，然后刷新云端作品。",
                         color = Muted,
-                        fontSize = 11.sp,
+                        fontSize = 12.sp,
                     )
+                    SecondaryAction(
+                        text = "打开服务器设置",
+                        onClick = { showServerDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else {
+                SectionCard {
+                    SectionTitle("所有云端作品", "${vm.cloudWorks.size} 个")
                     OutlinedTextField(
-                        value = author,
-                        onValueChange = { author = it },
-                        label = { Text("作者名（可选）") },
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text("搜索标题 / 作者 / 标签") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Checkbox(
-                            checked = includePack,
-                            onCheckedChange = { includePack = it },
+                        SecondaryAction(
+                            text = "搜索",
+                            onClick = { vm.refreshCloudWorks(query) },
+                            enabled = !vm.cloudLoading,
+                            modifier = Modifier.weight(1f),
                         )
-                        Column(Modifier.weight(1f)) {
-                            Text("包含图片包", color = Paper, fontSize = 13.sp)
-                            Text(
-                                "把本地 images/ 打成 pack.zip 一起上传；没有图片时只传剧本",
-                                color = Muted,
-                                fontSize = 10.sp,
+                        SecondaryAction(
+                            text = if (vm.cloudLoading) "刷新中…" else "刷新",
+                            onClick = { vm.refreshCloudWorks(query) },
+                            enabled = !vm.cloudLoading,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+
+                    if (vm.cloudLoading) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = Amber,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text("正在读取云端作品…", color = Muted, fontSize = 12.sp)
+                        }
+                    } else if (vm.cloudWorks.isEmpty()) {
+                        Text(
+                            "还没有云端作品。回到首页长按本地作品即可上传。",
+                            color = Muted,
+                            fontSize = 12.sp,
+                        )
+                    } else {
+                        vm.cloudWorks.forEach { work ->
+                            CloudWorkCard(
+                                work = work,
+                                downloading = vm.cloudDownloadingId == work.id,
+                                enabled = !vm.cloudBusy,
+                                onDownload = { vm.downloadCloudWork(work) },
                             )
                         }
-                    }
-                    PrimaryAction(
-                        text = when {
-                            vm.cloudBusy && vm.cloudDownloadingId == null ->
-                                vm.cloudProgress ?: "上传中…"
-                            else -> "上传到云作品库"
-                        },
-                        onClick = {
-                            vm.settings.cloudAuthor = author
-                            vm.uploadCurrentScript(includePack, author)
-                        },
-                        enabled = !vm.cloudBusy && vm.settings.cloudBaseUrl.isNotBlank(),
-                    )
-                } else {
-                    Text(
-                        "先在本地导入并选择一个剧本，再来上传。",
-                        color = Muted,
-                        fontSize = 12.sp,
-                    )
-                }
-                vm.cloudProgress?.let {
-                    if (!vm.cloudBusy) Text(it, color = AmberSoft, fontSize = 11.sp)
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-            SectionCard {
-                SectionTitle("所有云端作品", "${vm.cloudWorks.size} 个")
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    label = { Text("搜索标题 / 作者 / 标签") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                SecondaryAction(
-                    text = "搜索",
-                    onClick = { vm.refreshCloudWorks(query) },
-                    enabled = !vm.cloudLoading,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                if (vm.cloudLoading) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = Amber,
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Text("正在读取云端作品…", color = Muted, fontSize = 12.sp)
-                    }
-                } else if (vm.cloudWorks.isEmpty()) {
-                    Text(
-                        "还没有云端作品。上传当前剧本后会出现在这里。",
-                        color = Muted,
-                        fontSize = 12.sp,
-                    )
-                } else {
-                    vm.cloudWorks.forEach { work ->
-                        CloudWorkCard(
-                            work = work,
-                            downloading = vm.cloudDownloadingId == work.id,
-                            enabled = !vm.cloudBusy,
-                            onDownload = { vm.downloadCloudWork(work) },
-                        )
                     }
                 }
             }
@@ -241,6 +195,65 @@ fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
             Spacer(Modifier.height(20.dp))
         }
     }
+
+    if (showServerDialog) {
+        CloudServerDialog(
+            vm = vm,
+            onDismiss = { showServerDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun CloudServerDialog(
+    vm: GalgameViewModel,
+    onDismiss: () -> Unit,
+) {
+    var serverUrl by remember(vm.settings.cloudBaseUrl) {
+        mutableStateOf(vm.settings.cloudBaseUrl)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("云服务器设置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "支持局域网 IP:端口，或 Cloudflare Tunnel 的 HTTPS 域名。",
+                    color = Muted,
+                    fontSize = 11.sp,
+                )
+                OutlinedTextField(
+                    value = serverUrl,
+                    onValueChange = { serverUrl = it },
+                    label = { Text("服务器地址") },
+                    placeholder = { Text("http://192.168.1.10:8787") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(vm.cloudServerStatus, color = Muted, fontSize = 11.sp)
+                vm.cloudError?.let {
+                    Text(it, color = Color(0xFFFFB4B4), fontSize = 11.sp)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    vm.testCloudServer(serverUrl)
+                    onDismiss()
+                },
+                enabled = !vm.cloudTesting,
+            ) {
+                Text(if (vm.cloudTesting) "连接中…" else "保存并测试")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        },
+    )
 }
 
 @Composable
