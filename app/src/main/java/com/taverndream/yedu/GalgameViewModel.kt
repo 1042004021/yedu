@@ -985,6 +985,8 @@ class GalgameViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun readCloudWorksCache(): List<CloudWork> {
+        // 未配置服务器时不展示任何云端缓存，避免旧的默认地址把作品带出来。
+        if (settings.cloudBaseUrl.isBlank()) return emptyList()
         val raw = settings.cloudWorksCache
         if (raw.isBlank()) return emptyList()
         return runCatching {

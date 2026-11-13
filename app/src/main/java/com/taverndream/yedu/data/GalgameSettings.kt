@@ -43,9 +43,18 @@ class GalgameSettings(context: Context) {
         set(v) = sp.edit().putInt("sdDownloadThreads", v.coerceIn(1, 16)).apply()
 
     var cloudBaseUrl: String
-        get() = sp.getString("cloudBaseUrl", DEFAULT_CLOUD_BASE_URL)
-            ?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_CLOUD_BASE_URL
+        get() {
+            val saved = sp.getString("cloudBaseUrl", "") ?: ""
+            // 旧版本曾把演示服务器作为默认值；升级后移除它，避免用户未配置也自动联网。
+            if (saved.trimEnd('/') == LEGACY_DEFAULT_CLOUD_BASE_URL) {
+                sp.edit()
+                    .remove("cloudBaseUrl")
+                    .remove("cloudWorksCache")
+                    .apply()
+                return ""
+            }
+            return saved
+        }
         set(v) = sp.edit().putString("cloudBaseUrl", v).apply()
 
     /** 云端作品列表缓存，避免每次进入云端页都重新请求封面。 */
@@ -78,7 +87,7 @@ class GalgameSettings(context: Context) {
     }
 
     companion object {
-        const val DEFAULT_CLOUD_BASE_URL = "https://yedu.104021.xyz"
+        private const val LEGACY_DEFAULT_CLOUD_BASE_URL = "https://yedu.104021.xyz"
         const val DEFAULT_NEGATIVE =
             "lowres, bad anatomy, bad hands, worst quality, watermark, text,"
         const val DEFAULT_STYLE = "anime style, clean lineart, soft lighting"
