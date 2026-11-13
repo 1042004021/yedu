@@ -5,7 +5,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -414,7 +414,7 @@ private fun WorkActionRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick)
+            .pressableClickable(onClick = onClick)
             .padding(vertical = 12.dp),
     ) {
         Text(
@@ -496,6 +496,14 @@ private fun UploadCloudDialog(
                 },
                 enabled = !vm.cloudBusy,
             ) {
+                if (vm.cloudBusy) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 1.6.dp,
+                        color = Amber,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                }
                 Text(if (vm.cloudBusy) "上传中…" else "上传")
             }
         },
@@ -670,7 +678,7 @@ private fun MiniAction(
     Surface(
         modifier = modifier
             .clip(MaterialTheme.shapes.small)
-            .clickable(onClick = onClick),
+            .pressableClickable(onClick = onClick),
         color = if (primary) Amber else Color.White.copy(alpha = 0.07f),
         shape = MaterialTheme.shapes.small,
         border = if (primary) null else BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),

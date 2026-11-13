@@ -1,8 +1,13 @@
 package com.taverndream.yedu.ui
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -31,6 +36,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -53,6 +59,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.taverndream.yedu.GalgameViewModel
@@ -137,20 +144,8 @@ fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
                         onSearch = { vm.refreshCloudWorks(query) },
                     )
 
-                    if (vm.cloudLoading) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp,
-                                color = Amber,
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Text("正在读取云端作品…", color = Muted, fontSize = 12.sp)
-                        }
+                    if (vm.cloudLoading && vm.cloudWorks.isEmpty()) {
+                        CloudLoadingSkeleton()
                     } else if (vm.cloudWorks.isEmpty()) {
                         Text(
                             "还没有云端作品。回到首页长按本地作品即可上传。",
@@ -158,10 +153,13 @@ fun CloudScreen(vm: GalgameViewModel, onBack: () -> Unit) {
                             fontSize = 12.sp,
                         )
                     } else {
+                        if (vm.cloudLoading) CloudRefreshStrip()
                         vm.cloudWorks.forEach { work ->
+                            val downloading = vm.cloudDownloadingId == work.id
                             CloudWorkCard(
                                 work = work,
-                                downloading = vm.cloudDownloadingId == work.id,
+                                downloading = downloading,
+                                progress = if (downloading) vm.cloudProgress else null,
                                 enabled = !vm.cloudBusy,
                                 onDownload = { vm.downloadCloudWork(work) },
                             )
@@ -249,7 +247,7 @@ private fun CloudSearchBar(
                 modifier = Modifier
                     .size(32.dp)
                     .clip(RoundedCornerShape(9.dp))
-                    .clickable(enabled = !loading) {
+                    .pressableClickable(enabled = !loading) {
                         keyboard?.hide()
                         onSearch()
                     },
@@ -275,6 +273,94 @@ private fun CloudSearchBar(
 }
 
 @Composable
+private fun CloudRefreshStrip() {
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        LinearProgressIndicator(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = Amber,
+            trackColor = Color.White.copy(alpha = 0.08f),
+        )
+        Text("正在同步云端作品…", color = AmberSoft, fontSize = 10.sp)
+    }
+}
+
+@Composable
+private fun CloudLoadingSkeleton() {
+    val transition = rememberInfiniteTransition(label = "cloudSkeleton")
+    val pulse by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(850, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "cloudSkeletonPulse",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        repeat(2) {
+            CloudSkeletonRow(pulse)
+        }
+    }
+    Text(
+        "正在获取云端作品…",
+        color = Muted,
+        fontSize = 10.sp,
+        modifier = Modifier.padding(start = 2.dp, top = 4.dp),
+    )
+}
+
+@Composable
+private fun CloudSkeletonRow(pulse: Float) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = Color.White.copy(alpha = 0.035f),
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.07f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(11.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(88.dp)
+                    .height(118.dp)
+                    .clip(RoundedCornerShape(9.dp))
+                    .background(Color.White.copy(alpha = 0.02f + pulse * 0.05f)),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                SkeletonBar(0.72f, 15.dp, pulse)
+                SkeletonBar(0.34f, 9.dp, pulse)
+                Spacer(Modifier.height(5.dp))
+                SkeletonBar(0.92f, 8.dp, pulse)
+                SkeletonBar(0.55f, 8.dp, pulse)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonBar(
+    widthFraction: Float,
+    height: Dp,
+    pulse: Float,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth(widthFraction)
+            .height(height)
+            .clip(RoundedCornerShape(4.dp))
+            .background(Color.White.copy(alpha = 0.02f + pulse * 0.055f)),
+    )
+}
+
+@Composable
 private fun CloudServerDialog(
     vm: GalgameViewModel,
     onDismiss: () -> Unit,
@@ -284,7 +370,7 @@ private fun CloudServerDialog(
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!vm.cloudTesting) onDismiss() },
         title = { Text("云服务器设置") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -318,17 +404,22 @@ private fun CloudServerDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = {
-                    vm.testCloudServer(serverUrl)
-                    onDismiss()
-                },
+                onClick = { vm.testCloudServer(serverUrl) },
                 enabled = !vm.cloudTesting,
             ) {
+                if (vm.cloudTesting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 1.6.dp,
+                        color = Amber,
+                    )
+                    Spacer(Modifier.width(7.dp))
+                }
                 Text(if (vm.cloudTesting) "连接中…" else "保存并测试")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !vm.cloudTesting) {
                 Text("关闭")
             }
         },
@@ -339,6 +430,7 @@ private fun CloudServerDialog(
 private fun CloudWorkCard(
     work: CloudWork,
     downloading: Boolean,
+    progress: String?,
     enabled: Boolean,
     onDownload: () -> Unit,
 ) {
@@ -422,7 +514,13 @@ private fun CloudWorkCard(
                             color = Amber,
                         )
                         Spacer(Modifier.width(6.dp))
-                        Text("下载中…", color = AmberSoft, fontSize = 11.sp)
+                        Text(
+                            progress ?: "下载中…",
+                            color = AmberSoft,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     } else {
                         TextButton(
                             onClick = onDownload,
