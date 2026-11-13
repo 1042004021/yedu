@@ -124,6 +124,8 @@ Cloudflare R2 云端作品库、元数据入库与下载
 
 ### 9.1 最终实现方案
 
+- 服务统一命名为 **Yedu Cloud（夜读云）**，Node 包名 `yedu-cloud`，健康检查 service 字段、日志和 Docker Compose 服务名同步。
+
 - `config.js` 支持 `STORAGE_DRIVER=s3|qiniu`；默认 S3 兼容 R2，读取 R2 Account ID、Access Key、Secret、Bucket、Region、Endpoint 和 DB 路径。
 - `storageService.js` 统一封装上传/下载/HEAD：R2 用 AWS SDK v3 生成预签名 PUT/GET，七牛返回表单上传 Token 和私有下载 URL。
 - `db.js` 使用 Node 22 内置 `node:sqlite` 创建 `works` 表和索引；Docker 使用 `/app/data` 命名卷。
@@ -138,6 +140,7 @@ Cloudflare R2 云端作品库、元数据入库与下载
 
 | 类型 | 文件路径 | 关键位置 | 改动说明 |
 |------|----------|----------|----------|
+| 修改 | `server/package.json`、`server/src/app.js`、`server/src/server.js`、`server/docker-compose.yml` | Yedu Cloud 命名 | 包名、服务名、日志和健康检查统一 |
 | 修改 | `server/src/config.js` | `loadConfig` | 增加 s3/qiniu 驱动分支、R2 配置和 DB 路径 |
 | 新增 | `server/src/storageService.js` | `createStorageService`、`createUpload`、`createDownload`、`stat` | R2 预签名和七牛兼容 |
 | 新增 | `server/src/db.js` | `createDatabase` | SQLite works 表和索引 |
@@ -178,3 +181,4 @@ Cloudflare R2 云端作品库、元数据入库与下载
 | 时间 | 修改内容 | 修改原因 | 确认人 |
 |------|----------|----------|--------|
 | 2026-11-13 | 完成 R2 云端作品库、元数据入库和下载接口 | 用户需求 | 用户 |
+| 2026-11-13 | 服务统一命名为 Yedu Cloud（`yedu-cloud`） | 后端命名 | 用户 |

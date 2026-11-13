@@ -100,7 +100,7 @@ filesDir/galgame_json/
 
 与 Tavern Dream 的包名和数据完全独立，可同时安装。
 
-## 云作品库服务（可选）
+## Yedu Cloud 云作品库服务（可选）
 
 仓库内附一个 Cloudflare R2 云端作品库后端：
 
