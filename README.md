@@ -100,6 +100,20 @@ filesDir/galgame_json/
 
 与 Tavern Dream 的包名和数据完全独立，可同时安装。
 
+## 云备份签名服务（可选）
+
+仓库内附一个只负责签发七牛上传 Token / 私有下载 URL 的 Node.js 服务，AK/SK 只放服务端，不进入 APK：
+
+```bash
+cd server
+cp .env.example .env
+# 填七牛 AK/SK、Bucket、域名和 SERVER_SECRET
+npm install
+npm start
+```
+
+接口、Docker 部署、HTTPS 反代和 Android 上传方式见 [`server/README.md`](server/README.md)。当前仅完成后端签名服务，App 端云备份尚未接入。
+
 ## 许可证
 
 原创代码按 Apache-2.0 许可；local-dream 衍生部分继续按 CC BY-NC 4.0，第三方组件保留各自许可。含 local-dream 部分的构建整体受非商业限制，不能整体宣称可商用。见 `LICENSE`、`NOTICE`、`LICENSES/` 和 `THIRD_PARTY_NOTICES.md`。
